@@ -1,0 +1,389 @@
+#!/bin/sh
+
+. "${IPKG_INSTROOT}/usr/share/libubox/jshn.sh"
+
+FAN_CONTROL="${IPKG_INSTROOT}/usr/libexec/fan-control"
+SYSINFO_DIR="${IPKG_INSTROOT}/tmp/sysinfo"
+
+is_uint() {
+	case "$1" in
+		''|*[!0-9]*)
+			return 1
+			;;
+		*)
+			return 0
+			;;
+	esac
+}
+
+read_mode() {
+	local value
+
+	value=$(uci -q get 'luci-fan.@luci-fan[0].mode' 2>/dev/null)
+
+	case "$value" in
+		turbo|smart|manual)
+			printf '%s\n' "$value"
+			;;
+		*)
+			printf '%s\n' 'smart'
+			;;
+	esac
+}
+
+read_trimmed() {
+	local value
+
+	[ -r "$1" ] || return 1
+	value=$(cat "$1" 2>/dev/null) || return 1
+	printf '%s' "$value" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+read_number() {
+	local value
+
+	value=$(read_trimmed "$1") || return 1
+	[ -n "$value" ] || return 1
+	printf '%s\n' "$value"
+}
+
+milli_to_celsius() {
+	[ -n "$1" ] || return 1
+	awk -v value="$1" 'BEGIN { printf "%.1f", value / 1000 }'
+}
+
+compute_ratio() {
+	awk -v current="$1" -v off="$2" -v next="$3" -v start="$4" '
+		BEGIN {
+			ratio = 0
+			if (off != "" && next != "" && next > off)
+				ratio = (current - off) / (next - off)
+			else if (start != "" && start > 0)
+				ratio = current / start
+			if (ratio < 0)
+				ratio = 0
+			else if (ratio > 1)
+				ratio = 1
+			printf "%.3f", ratio
+		}
+	'
+}
+
+pwm_to_percent() {
+	[ -n "$1" ] || return 1
+	awk -v value="$1" 'BEGIN { printf "%d", int((value * 100 / 255) + 0.5) }'
+}
+
+get_uci_temp() {
+	local value
+
+	value=$(uci -q get "luci-fan.@luci-fan[0].$1" 2>/dev/null)
+	is_uint "$value" || return 1
+	printf '%s\n' "$value"
+}
+
+resolve_pwm_hwmon() {
+	local hwmon entry preferred fallback name
+
+	[ -d "${IPKG_INSTROOT}/sys/class/hwmon" ] || return 1
+
+	for hwmon in "${IPKG_INSTROOT}"/sys/class/hwmon/hwmon*; do
+		[ -d "$hwmon" ] || continue
+		[ -w "$hwmon/pwm1" ] || continue
+
+		name=$(read_trimmed "$hwmon/name") || name=''
+		entry="$hwmon|$name"
+
+		case "$name" in
+			pwmfan|pwm-fan|pwm_fan)
+				preferred=$entry
+				break
+				;;
+			*)
+				[ -n "$fallback" ] || fallback=$entry
+				;;
+		esac
+	done
+
+	entry=${preferred:-$fallback}
+	[ -n "$entry" ] || return 1
+
+	PWM_HWMON=${entry%%|*}
+	PWM_NAME=${entry#*|}
+	PWM_PATH="$PWM_HWMON/pwm1"
+	PWM_ENABLE_PATH=''
+	PWM_RPM_PATH=''
+
+	[ -w "$PWM_HWMON/pwm1_enable" ] && PWM_ENABLE_PATH="$PWM_HWMON/pwm1_enable"
+	[ -r "$PWM_HWMON/fan1_input" ] && PWM_RPM_PATH="$PWM_HWMON/fan1_input"
+	return 0
+}
+
+read_pwm_runtime() {
+	resolve_pwm_hwmon || return 1
+
+	PWM_RAW=$(read_number "$PWM_PATH") || PWM_RAW=''
+	PWM_ENABLE=''
+	PWM_RPM=''
+	PWM_PERCENT=''
+
+	[ -n "$PWM_ENABLE_PATH" ] && PWM_ENABLE=$(read_trimmed "$PWM_ENABLE_PATH") || true
+	[ -n "$PWM_RPM_PATH" ] && PWM_RPM=$(read_number "$PWM_RPM_PATH") || true
+	[ -n "$PWM_RAW" ] && PWM_PERCENT=$(pwm_to_percent "$PWM_RAW") || true
+	return 0
+}
+
+resolve_primary_thermal_zone() {
+	local zone_path thermal_zone thermal_type fallback_zone fallback_type
+
+	if [ -n "$ZONE" ]; then
+		zone_path="${IPKG_INSTROOT}/sys/class/thermal/$ZONE"
+		if [ -r "$zone_path/temp" ]; then
+			PRIMARY_ZONE=$ZONE
+			PRIMARY_THERMAL_TYPE=$(read_trimmed "$zone_path/type") || PRIMARY_THERMAL_TYPE=''
+			return 0
+		fi
+	fi
+
+	for thermal_zone in "${IPKG_INSTROOT}"/sys/class/thermal/thermal_zone*; do
+		[ -d "$thermal_zone" ] || continue
+		[ -r "$thermal_zone/temp" ] || continue
+
+		thermal_type=$(read_trimmed "$thermal_zone/type") || thermal_type=''
+
+		case "$thermal_type" in
+			*cpu*|*soc*|*package*)
+				PRIMARY_ZONE=${thermal_zone##*/}
+				PRIMARY_THERMAL_TYPE=$thermal_type
+				return 0
+				;;
+			*)
+				if [ -z "$fallback_zone" ]; then
+					fallback_zone=${thermal_zone##*/}
+					fallback_type=$thermal_type
+				fi
+				;;
+		esac
+	done
+
+	[ -n "$fallback_zone" ] || return 1
+	PRIMARY_ZONE=$fallback_zone
+	PRIMARY_THERMAL_TYPE=$fallback_type
+	return 0
+}
+
+load_board_profile() {
+	local lowered
+
+	BOARD_NAME=$(read_trimmed "$SYSINFO_DIR/board_name") || BOARD_NAME=''
+	MODEL_NAME=$(read_trimmed "$SYSINFO_DIR/model") || MODEL_NAME=''
+	lowered=$(printf '%s %s' "$BOARD_NAME" "$MODEL_NAME" | tr '[:upper:]' '[:lower:]')
+
+	case "$lowered" in
+		*bpi-r4*|*banana\ pi\ bpi-r4*|*mt7988*)
+			IS_BPI_R4=1
+			PROFILE='bpi-r4'
+			;;
+		*)
+			IS_BPI_R4=0
+			PROFILE='generic'
+			;;
+	esac
+}
+
+resolve_zone_trip() {
+	set -- $($FAN_CONTROL get 2>/dev/null)
+	[ -n "$1" ] && [ -n "$2" ] || return 1
+	ZONE=$1
+	TRIP=$2
+	return 0
+}
+
+json_add_common() {
+	json_add_string board_name "$BOARD_NAME"
+	json_add_string model_name "$MODEL_NAME"
+	json_add_boolean is_bpi_r4 "$IS_BPI_R4"
+	json_add_string profile "$PROFILE"
+	json_add_boolean enabled "$ENABLED"
+	json_add_string mode "$MODE"
+	json_add_int manual_pwm "$MANUAL_PWM"
+	json_add_int poll_interval "$POLL_INTERVAL"
+}
+
+json_add_empty_runtime() {
+	json_add_string zone ""
+	json_add_string thermal_type ""
+	json_add_string zone_temp ""
+	json_add_string fan_on_temp ""
+	json_add_string fan_off_temp ""
+	json_add_string configured_on_temp ""
+	json_add_string configured_off_temp ""
+	json_add_string hysteresis ""
+	json_add_string next_trip_temp ""
+	json_add_string headroom ""
+	json_add_string start_delta ""
+	json_add_string load_ratio "0"
+	json_add_string state "disabled"
+	json_add_boolean thermal_supported 0
+	json_add_boolean pwm_supported 0
+	json_add_boolean mode_supported 0
+	json_add_string hwmon_name ""
+	json_add_string hwmon_path ""
+	json_add_string pwm_raw ""
+	json_add_string pwm_percent ""
+	json_add_string pwm_enable_mode ""
+	json_add_string fan_rpm ""
+}
+
+get_status() {
+	local zone_path next_trip_index primary_zone_path
+	local fan_on_temp zone_temp fan_off_temp next_trip_temp thermal_type hysteresis headroom start_delta load_ratio
+	local configured_on configured_off configured_on_milli configured_off_milli hysteresis_value state
+	local thermal_supported pwm_supported runtime_error supported trip_point_value
+
+	load_board_profile
+	ENABLED=$(uci -q get luci-fan.@luci-fan[0].enabled 2>/dev/null)
+	[ "$ENABLED" = '1' ] || ENABLED=0
+	MODE=$(read_mode)
+	MANUAL_PWM=$(get_uci_temp manual_pwm) || MANUAL_PWM=70
+	POLL_INTERVAL=$(get_uci_temp poll_interval) || POLL_INTERVAL=3
+	trip_point_value=0
+	thermal_supported=0
+	pwm_supported=0
+	runtime_error=''
+
+	json_init
+	json_add_common
+
+	if [ -x "$FAN_CONTROL" ] && resolve_zone_trip; then
+		thermal_supported=1
+	fi
+
+	if resolve_primary_thermal_zone; then
+		primary_zone_path="${IPKG_INSTROOT}/sys/class/thermal/$PRIMARY_ZONE"
+		zone_temp=$(read_number "$primary_zone_path/temp") || zone_temp=''
+		thermal_type=$PRIMARY_THERMAL_TYPE
+	else
+		zone_temp=''
+		thermal_type=''
+	fi
+
+	if [ "$thermal_supported" = '1' ]; then
+		zone_path="${IPKG_INSTROOT}/sys/class/thermal/$ZONE"
+		trip_point_value=$TRIP
+		next_trip_index=$((TRIP + 1))
+		fan_on_temp=$(read_number "$zone_path/trip_point_${TRIP}_temp") || fan_on_temp=''
+		hysteresis=$(read_number "$zone_path/trip_point_${TRIP}_hyst") || hysteresis=''
+		next_trip_temp=$(read_number "$zone_path/trip_point_${next_trip_index}_temp") || next_trip_temp=''
+		[ -n "$thermal_type" ] || thermal_type=$(read_trimmed "$zone_path/type") || thermal_type=''
+	else
+		ZONE=$PRIMARY_ZONE
+		fan_on_temp=''
+		hysteresis=''
+		next_trip_temp=''
+	fi
+
+	if read_pwm_runtime; then
+		pwm_supported=1
+	fi
+
+	configured_on=$(get_uci_temp on_temp) || configured_on=''
+	configured_off=$(get_uci_temp off_temp) || configured_off=''
+
+	configured_on_milli=''
+	configured_off_milli=''
+	[ -n "$configured_on" ] && configured_on_milli=$((configured_on * 1000))
+	[ -n "$configured_off" ] && configured_off_milli=$((configured_off * 1000))
+
+	hysteresis_value=0
+	[ -n "$hysteresis" ] && hysteresis_value=$hysteresis
+
+	if [ -n "$fan_on_temp" ]; then
+		fan_off_temp=$((fan_on_temp - hysteresis_value))
+	else
+		fan_off_temp=''
+	fi
+
+	if { [ -z "$hysteresis" ] || [ "$hysteresis" -le 0 ]; } && [ -n "$configured_off_milli" ] && [ -n "$fan_on_temp" ] && [ "$configured_off_milli" -lt "$fan_on_temp" ]; then
+		fan_off_temp=$configured_off_milli
+		hysteresis=$((fan_on_temp - fan_off_temp))
+		hysteresis_value=$hysteresis
+	fi
+
+	state='disabled'
+	if [ "$ENABLED" = '1' ]; then
+		if [ "$pwm_supported" = '1' ] && [ -n "$PWM_RAW" ]; then
+			if [ "$PWM_RAW" -ge 200 ]; then
+				state='active'
+			elif [ "$PWM_RAW" -gt 0 ]; then
+				state='transition'
+			else
+				state='standby'
+			fi
+		elif [ -n "$zone_temp" ] && [ -n "$fan_on_temp" ] && [ "$zone_temp" -ge "$fan_on_temp" ]; then
+			state='active'
+		elif [ -n "$zone_temp" ] && [ -n "$fan_off_temp" ] && [ "$zone_temp" -gt "$fan_off_temp" ]; then
+			state='transition'
+		else
+			state='standby'
+		fi
+	fi
+
+	headroom=''
+	[ -n "$next_trip_temp" ] && [ -n "$zone_temp" ] && headroom=$((next_trip_temp - zone_temp))
+	start_delta=''
+	[ -n "$fan_on_temp" ] && [ -n "$zone_temp" ] && start_delta=$((fan_on_temp - zone_temp))
+	load_ratio=$(compute_ratio "$zone_temp" "$fan_off_temp" "$next_trip_temp" "$fan_on_temp")
+	supported=0
+	[ "$thermal_supported" = '1' ] || [ "$pwm_supported" = '1' ] && supported=1
+	[ "$thermal_supported" = '1' ] && supported=1
+
+	if [ "$supported" != '1' ]; then
+		runtime_error='No pwm-fan hwmon interface or writable active fan trip point was detected.'
+	fi
+
+	json_add_boolean supported "$supported"
+	[ -n "$runtime_error" ] && json_add_string error "$runtime_error"
+	json_add_string zone "$ZONE"
+	json_add_int trip_point "$trip_point_value"
+	json_add_string thermal_type "$thermal_type"
+	json_add_string zone_temp "$(milli_to_celsius "$zone_temp")"
+	json_add_string fan_on_temp "$(milli_to_celsius "$fan_on_temp")"
+	json_add_string fan_off_temp "$(milli_to_celsius "$fan_off_temp")"
+	json_add_string configured_on_temp "$( [ -n "$configured_on_milli" ] && milli_to_celsius "$configured_on_milli" )"
+	json_add_string configured_off_temp "$( [ -n "$configured_off_milli" ] && milli_to_celsius "$configured_off_milli" )"
+	json_add_string hysteresis "$( [ -n "$hysteresis" ] && milli_to_celsius "$hysteresis" )"
+	json_add_string next_trip_temp "$( [ -n "$next_trip_temp" ] && milli_to_celsius "$next_trip_temp" )"
+	json_add_string headroom "$( [ -n "$headroom" ] && milli_to_celsius "$headroom" )"
+	json_add_string start_delta "$(milli_to_celsius "$start_delta")"
+	json_add_string load_ratio "$load_ratio"
+	json_add_string state "$state"
+	json_add_boolean thermal_supported "$thermal_supported"
+	json_add_boolean pwm_supported "$pwm_supported"
+	json_add_boolean mode_supported "$pwm_supported"
+	json_add_string hwmon_name "$PWM_NAME"
+	json_add_string hwmon_path "$PWM_HWMON"
+	json_add_string pwm_raw "$PWM_RAW"
+	json_add_string pwm_percent "$PWM_PERCENT"
+	json_add_string pwm_enable_mode "$PWM_ENABLE"
+	json_add_string fan_rpm "$PWM_RPM"
+	json_dump
+	json_cleanup
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object getStatus
+		json_close_object
+		json_dump
+		json_cleanup
+		;;
+	call)
+		case "$2" in
+			getStatus)
+				get_status
+				;;
+		esac
+		;;
+esac

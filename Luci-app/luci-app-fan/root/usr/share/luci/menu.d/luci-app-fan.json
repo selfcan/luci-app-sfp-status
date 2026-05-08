@@ -1,0 +1,13 @@
+{
+	"admin/system/luci-fan": {
+		"title": "Fan Control",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "fan"
+		},
+		"depends": {
+			"acl": [ "luci-app-fan" ]
+		}
+	}
+}

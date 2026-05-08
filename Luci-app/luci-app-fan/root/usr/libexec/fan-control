@@ -1,0 +1,504 @@
+#!/bin/sh
+# author: jjm2473
+
+SAVE=/tmp/run/fanTP
+PWM_SAVE=/tmp/run/fanPWM
+ACTION=$1
+shift
+
+ensure_cache_dir() {
+    mkdir -p "${SAVE%/*}"
+}
+
+read_trimmed() {
+    [ -r "$1" ] || return 1
+    value=$(cat "$1" 2>/dev/null) || return 1
+    printf '%s' "$value" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+is_uint() {
+    case "$1" in
+        ''|*[!0-9]*)
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+clamp_uint() {
+    value=$1
+    minimum=$2
+    maximum=$3
+
+    [ "$value" -lt "$minimum" ] && value=$minimum
+    [ "$value" -gt "$maximum" ] && value=$maximum
+    printf '%s\n' "$value"
+}
+
+percent_to_raw() {
+    awk -v value="$1" 'BEGIN {
+        raw = int((value * 255 / 100) + 0.5)
+        if (raw < 0)
+            raw = 0
+        else if (raw > 255)
+            raw = 255
+        printf "%d", raw
+    }'
+}
+
+read_uci_uint() {
+    value=$(uci -q get "luci-fan.@luci-fan[0].$1" 2>/dev/null)
+    is_uint "$value" || return 1
+    printf '%s\n' "$value"
+}
+
+read_uci_mode() {
+    value=$(uci -q get 'luci-fan.@luci-fan[0].mode' 2>/dev/null)
+
+    case "$value" in
+        turbo|smart|manual)
+            printf '%s\n' "$value"
+            ;;
+        *)
+            printf '%s\n' 'smart'
+            ;;
+    esac
+}
+
+# print: zone trip_point current_target_temp [max_target_temp]
+# ex. thermal_zone0 0 50000 60000
+get_fan_tp() {
+    zone=
+    cdev=
+    trip=
+    temp=
+    mintemp=
+    mintrip=
+    minzone=
+    maxtemp=
+
+    [ -d /sys/class/thermal ] || return 1
+    cd /sys/class/thermal || return 1
+
+    for zone in thermal_zone*; do
+        [ -d "$zone" ] || continue
+        cd "$zone" || continue
+
+        for cdev in cdev[0-9]*; do
+            case "$cdev" in
+                cdev[0-9]*) ;;
+                *) continue ;;
+            esac
+
+            [ -d "$cdev" ] || continue
+            grep -Fiq fan "$cdev/type" || continue
+
+            trip=$(cat "${cdev}_trip_point" 2>/dev/null) || continue
+            grep -Fwq active "trip_point_${trip}_type" || continue
+
+            perms=$(stat -c '%#a' "trip_point_${trip}_temp" 2>/dev/null || echo 0444)
+            [ "$perms" = '0644' ] || continue
+
+            temp=$(cat "trip_point_${trip}_temp" 2>/dev/null) || continue
+
+            if [ -z "$mintemp" ] || [ "$temp" -lt "$mintemp" ]; then
+                if [ -n "$mintemp" ]; then
+                    if [ "$zone" = "$minzone" ]; then
+                        maxtemp=$mintemp
+                    else
+                        maxtemp=
+                    fi
+                fi
+
+                mintemp=$temp
+                mintrip=$trip
+                minzone=$zone
+            elif [ -z "$maxtemp" ] || [ "$temp" -lt "$maxtemp" ]; then
+                maxtemp=$temp
+            fi
+        done
+
+        cd /sys/class/thermal || return 1
+    done
+
+    if [ -n "$mintemp" ]; then
+        echo "$minzone" "$mintrip" "$mintemp" "$maxtemp"
+        return 0
+    fi
+
+    return 1
+}
+
+get_fan_tp_cached() {
+    ensure_cache_dir
+
+    if [ -f "$SAVE" ]; then
+        if [ -s "$SAVE" ]; then
+            cat "$SAVE"
+            return 0
+        fi
+
+        return 1
+    fi
+
+    get_fan_tp | tee "$SAVE"
+    [ -s "$SAVE" ]
+}
+
+get_fan_tp_user() {
+    set -- $(get_fan_tp_cached)
+    [ -n "$1" ] && [ -n "$2" ] || return 1
+
+    on_temp=$(cat "/sys/class/thermal/$1/trip_point_${2}_temp" 2>/dev/null) || return 1
+    echo "$1" "$2" "$on_temp" "$4"
+    return 0
+}
+
+init_fan_tp() {
+    ensure_cache_dir
+    [ -f "$SAVE" ] || get_fan_tp >"$SAVE"
+}
+
+resolve_pwm_hwmon() {
+    hwmon=
+    preferred=
+    fallback=
+    entry=
+
+    [ -d /sys/class/hwmon ] || return 1
+
+    for hwmon in /sys/class/hwmon/hwmon*; do
+        [ -d "$hwmon" ] || continue
+        [ -w "$hwmon/pwm1" ] || continue
+
+        name=$(read_trimmed "$hwmon/name") || name=''
+        entry="$hwmon|$name"
+
+        case "$name" in
+            pwmfan|pwm-fan|pwm_fan)
+                preferred=$entry
+                break
+                ;;
+            *)
+                [ -n "$fallback" ] || fallback=$entry
+                ;;
+        esac
+    done
+
+    entry=${preferred:-$fallback}
+    [ -n "$entry" ] || return 1
+
+    PWM_HWMON=${entry%%|*}
+    PWM_NAME=${entry#*|}
+    PWM_PATH="$PWM_HWMON/pwm1"
+    PWM_ENABLE_PATH=''
+    PWM_RPM_PATH=''
+
+    [ -w "$PWM_HWMON/pwm1_enable" ] && PWM_ENABLE_PATH="$PWM_HWMON/pwm1_enable"
+    [ -r "$PWM_HWMON/fan1_input" ] && PWM_RPM_PATH="$PWM_HWMON/fan1_input"
+    return 0
+}
+
+resolve_pwm_hwmon_cached() {
+    ensure_cache_dir
+
+    if [ -s "$PWM_SAVE" ]; then
+        cached=$(cat "$PWM_SAVE" 2>/dev/null)
+        PWM_HWMON=${cached%%|*}
+        PWM_NAME=${cached#*|}
+
+        if [ -d "$PWM_HWMON" ] && [ -w "$PWM_HWMON/pwm1" ]; then
+            PWM_PATH="$PWM_HWMON/pwm1"
+            PWM_ENABLE_PATH=''
+            PWM_RPM_PATH=''
+            [ -w "$PWM_HWMON/pwm1_enable" ] && PWM_ENABLE_PATH="$PWM_HWMON/pwm1_enable"
+            [ -r "$PWM_HWMON/fan1_input" ] && PWM_RPM_PATH="$PWM_HWMON/fan1_input"
+            return 0
+        fi
+    fi
+
+    resolve_pwm_hwmon || return 1
+    printf '%s|%s\n' "$PWM_HWMON" "$PWM_NAME" >"$PWM_SAVE"
+    return 0
+}
+
+set_pwm_raw() {
+    raw=$1
+
+    is_uint "$raw" || {
+        echo 'PWM value must be an unsigned integer' >&2
+        return 1
+    }
+
+    raw=$(clamp_uint "$raw" 0 255)
+    resolve_pwm_hwmon_cached || return 1
+
+    if [ -n "$PWM_ENABLE_PATH" ]; then
+        if [ "$raw" -gt 0 ]; then
+            echo 2 >"$PWM_ENABLE_PATH" 2>/dev/null || echo 1 >"$PWM_ENABLE_PATH" 2>/dev/null
+        else
+            echo 0 >"$PWM_ENABLE_PATH" 2>/dev/null || true
+        fi
+    fi
+
+    echo "$raw" >"$PWM_PATH"
+}
+
+disable_pwm() {
+    resolve_pwm_hwmon_cached || return 0
+
+    if [ -n "$PWM_ENABLE_PATH" ]; then
+        echo 0 >"$PWM_ENABLE_PATH" 2>/dev/null || true
+    fi
+
+    echo 0 >"$PWM_PATH" 2>/dev/null || true
+}
+
+get_pwm_status() {
+    resolve_pwm_hwmon_cached || return 1
+
+    pwm_raw=$(read_trimmed "$PWM_PATH") || pwm_raw=''
+    pwm_enable=''
+    pwm_rpm=''
+
+    [ -n "$PWM_ENABLE_PATH" ] && pwm_enable=$(read_trimmed "$PWM_ENABLE_PATH") || true
+    [ -n "$PWM_RPM_PATH" ] && pwm_rpm=$(read_trimmed "$PWM_RPM_PATH") || true
+
+    if is_uint "$pwm_raw"; then
+        pwm_percent=$(awk -v raw="$pwm_raw" 'BEGIN { printf "%d", int((raw * 100 / 255) + 0.5) }')
+    else
+        pwm_percent=''
+    fi
+
+    printf '%s %s %s %s %s %s\n' "$PWM_HWMON" "$PWM_NAME" "$pwm_raw" "$pwm_percent" "$pwm_enable" "$pwm_rpm"
+}
+
+load_trip_defaults() {
+    DEFAULT_ON_MILLI=''
+    DEFAULT_OFF_MILLI=''
+    DEFAULT_NEXT_MILLI=''
+
+    set -- $(get_fan_tp_user 2>/dev/null)
+    [ -n "$1" ] && [ -n "$2" ] || return 0
+
+    DEFAULT_ON_MILLI=$3
+    DEFAULT_NEXT_MILLI=$4
+    hyst=$(read_trimmed "/sys/class/thermal/$1/trip_point_${2}_hyst") || hyst=''
+    is_uint "$hyst" || hyst=''
+
+    if [ -n "$DEFAULT_ON_MILLI" ] && [ -n "$hyst" ]; then
+        DEFAULT_OFF_MILLI=$((DEFAULT_ON_MILLI - hyst))
+    fi
+}
+
+# param: ON_TEMP [OFF_TEMP]
+# OFF_TEMP = ON_TEMP - 5000 if not set
+# ex. 60000 55000
+set_fan_tp() {
+    on_temp=$1
+    off_temp=$2
+
+    [ -n "$on_temp" ] || {
+        echo 'ON_TEMP must be present' >&2
+        return 1
+    }
+
+    if [ -z "$off_temp" ]; then
+        [ "$on_temp" -gt 5000 ] || {
+            echo 'ON_TEMP must greater than 5000 when OFF_TEMP not present' >&2
+            return 1
+        }
+
+        off_temp=$((on_temp - 5000))
+    fi
+
+    [ "$on_temp" -gt "$off_temp" ] || {
+        echo 'ON_TEMP must greater than OFF_TEMP' >&2
+        return 1
+    }
+
+    hyst=$((on_temp - off_temp))
+
+    set -- $(get_fan_tp_cached)
+    [ -n "$1" ] && [ -n "$2" ] || return 1
+    [ -d "/sys/class/thermal/$1" ] || return 1
+
+    if [ -n "$4" ] && [ "$on_temp" -ge "$4" ]; then
+        on_temp=$(( $4 - 5000 ))
+        echo "WARN: ON_TEMP greater than next TP $4, fixed to $on_temp" >&2
+    fi
+
+    echo "$on_temp" > "/sys/class/thermal/$1/trip_point_${2}_temp"
+    echo "$hyst" > "/sys/class/thermal/$1/trip_point_${2}_hyst"
+}
+
+# print: current thermal sensor value and fan on temp
+get_temp() {
+    set -- $(get_fan_tp_cached)
+    [ -n "$1" ] && [ -n "$2" ] || return 1
+    [ -f "/sys/class/thermal/$1/temp" ] || return 1
+
+    temp=$(cat "/sys/class/thermal/$1/temp" 2>/dev/null) || return 1
+    trip_temp=$(cat "/sys/class/thermal/$1/trip_point_${2}_temp" 2>/dev/null) || return 1
+    echo "$temp $trip_temp"
+}
+
+smart_pwm_raw() {
+    temp_milli=$1
+    off_milli=$2
+    on_milli=$3
+    next_milli=$4
+
+    awk -v temp="$temp_milli" -v off="$off_milli" -v on="$on_milli" -v next="$next_milli" 'BEGIN {
+        warm = 160
+        high = next
+
+        if (off == "" || off <= 0)
+            off = 50000
+        if (on == "" || on <= off)
+            on = off + 5000
+        if (high == "" || high <= on)
+            high = on + 15000
+
+        if (temp <= off)
+            raw = 0
+        else if (temp < on)
+            raw = int(((temp - off) * warm) / (on - off))
+        else if (temp >= high)
+            raw = 255
+        else
+            raw = warm + int(((temp - on) * (255 - warm)) / (high - on))
+
+        if (raw < 0)
+            raw = 0
+        else if (raw > 255)
+            raw = 255
+
+        printf "%d", raw
+    }'
+}
+
+apply_current_config() {
+    enabled=$(uci -q get 'luci-fan.@luci-fan[0].enabled' 2>/dev/null)
+    [ "$enabled" = '1' ] || enabled=0
+
+    mode=$(read_uci_mode)
+    manual_pwm=$(read_uci_uint manual_pwm) || manual_pwm=70
+    interval=$(read_uci_uint poll_interval) || interval=3
+    interval=$(clamp_uint "$interval" 1 30)
+
+    load_trip_defaults
+
+    on_temp=$(read_uci_uint on_temp) || on_temp=''
+    off_temp=$(read_uci_uint off_temp) || off_temp=''
+
+    if [ -z "$on_temp" ] && [ -n "$DEFAULT_ON_MILLI" ]; then
+        on_temp=$((DEFAULT_ON_MILLI / 1000))
+    fi
+
+    if [ -z "$off_temp" ] && [ -n "$DEFAULT_OFF_MILLI" ]; then
+        off_temp=$((DEFAULT_OFF_MILLI / 1000))
+    fi
+
+    [ -n "$on_temp" ] || on_temp=55
+    [ -n "$off_temp" ] || off_temp=50
+
+    if [ "$enabled" != '1' ]; then
+        disable_pwm
+        return 0
+    fi
+
+    if resolve_pwm_hwmon_cached; then
+        case "$mode" in
+            turbo)
+                set_pwm_raw 255
+                return 0
+                ;;
+            manual)
+                raw=$(percent_to_raw "$manual_pwm")
+                set_pwm_raw "$raw"
+                return 0
+                ;;
+            *)
+                set -- $(get_temp 2>/dev/null)
+                temp_milli=$1
+
+                [ -n "$temp_milli" ] || return 1
+
+                off_milli=$((off_temp * 1000))
+                on_milli=$((on_temp * 1000))
+                next_milli=$DEFAULT_NEXT_MILLI
+                raw=$(smart_pwm_raw "$temp_milli" "$off_milli" "$on_milli" "$next_milli")
+                set_pwm_raw "$raw"
+                return 0
+                ;;
+        esac
+    fi
+
+    on_milli=$((on_temp * 1000))
+    off_milli=$((off_temp * 1000))
+    set_fan_tp "$on_milli" "$off_milli"
+}
+
+daemon_loop() {
+    interval=3
+
+    while :; do
+        apply_current_config
+        interval=$(read_uci_uint poll_interval 2>/dev/null) || interval=3
+        interval=$(clamp_uint "$interval" 1 30)
+        sleep "$interval"
+    done
+}
+
+usage() {
+    echo "usage: $0 sub-command"
+    echo 'where sub-command is one of:'
+    echo '      get                     Get thermal trip setting'
+    echo '      set ON_TEMP [OFF_TEMP]  Set thermal trip setting'
+    echo '      temp                    Get current thermal temp and fan start temp'
+    echo '      pwm-status              Get detected PWM runtime info'
+    echo '      pwm-set RAW             Set PWM duty cycle (0-255)'
+    echo '      apply                   Apply the current UCI profile once'
+    echo '      disable                 Stop PWM output if supported'
+    echo '      daemon                  Run the smart/manual/turbo control loop'
+    echo '      init                    Init caches, internal used'
+}
+
+case "$ACTION" in
+    get)
+        get_fan_tp_user
+    ;;
+    set)
+        set_fan_tp "$@"
+    ;;
+    temp)
+        get_temp
+    ;;
+    pwm-status)
+        get_pwm_status
+    ;;
+    pwm-set)
+        set_pwm_raw "$1"
+    ;;
+    apply)
+        apply_current_config
+    ;;
+    disable)
+        disable_pwm
+    ;;
+    daemon)
+        daemon_loop
+    ;;
+    init)
+        init_fan_tp
+        resolve_pwm_hwmon_cached >/dev/null 2>&1 || true
+    ;;
+    *)
+        usage
+        exit 1
+    ;;
+esac
+
