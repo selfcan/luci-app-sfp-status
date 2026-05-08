@@ -1,0 +1,219 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Adaptive Fan Profile"
+msgstr ""
+
+msgid "BPI-R4 routers usually benefit from a slightly lower smart start temperature when Wi-Fi or NSS load ramps up quickly."
+msgstr ""
+
+msgid "BPI-R4 tuned layout with live CPU temperature, PWM duty, tachometer feedback and three operating modes."
+msgstr ""
+
+msgid "CPU temperature"
+msgstr ""
+
+msgid "Ceiling not exposed"
+msgstr ""
+
+msgid "Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty and tachometer feedback over ubus."
+msgstr ""
+
+msgid "Control mode"
+msgstr ""
+
+msgid "Cooling active"
+msgstr ""
+
+msgid "Current PWM duty"
+msgstr ""
+
+msgid "Current config"
+msgstr ""
+
+msgid "Current device"
+msgstr ""
+
+msgid "Current fan duty"
+msgstr ""
+
+msgid "Current temperature"
+msgstr ""
+
+msgid "Current temperature is already above the smart start threshold. Save carefully to avoid sudden fan jumps."
+msgstr ""
+
+msgid "Disabled"
+msgstr ""
+
+msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value."
+msgstr ""
+
+msgid "Enable fan service"
+msgstr ""
+
+msgid "Enable the service and Save & Apply to start the fan daemon."
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Enabled in UCI"
+msgstr ""
+
+msgid "Fan Control"
+msgstr ""
+
+msgid "Fan daemon loop interval in seconds. Lower values react faster, higher values reduce churn."
+msgstr ""
+
+msgid "Fan speed"
+msgstr ""
+
+msgid "Fan start temperature"
+msgstr ""
+
+msgid "Fan stop temperature"
+msgstr ""
+
+msgid "Live Cooling Dashboard"
+msgstr ""
+
+msgid "Live OpenWrt cooling dashboard with smart, manual and turbo profiles when the target hardware exposes pwm-fan telemetry."
+msgstr ""
+
+msgid "Loaded into the form"
+msgstr ""
+
+msgid "Manual"
+msgstr ""
+
+msgid "Manual PWM target"
+msgstr ""
+
+msgid "Manual mode"
+msgstr ""
+
+msgid "Manual mode applies the selected duty target after Save & Apply."
+msgstr ""
+
+msgid "Manual target"
+msgstr ""
+
+msgid "Mode target"
+msgstr ""
+
+msgid "Modulating"
+msgstr ""
+
+msgid "Monitoring state"
+msgstr ""
+
+msgid "Next trip ceiling"
+msgstr ""
+
+msgid "Not available"
+msgstr ""
+
+msgid "Off temperature should stay at least 3 C below the start threshold for stable smart mode modulation."
+msgstr ""
+
+msgid "Operating profiles"
+msgstr ""
+
+msgid "Polling interval"
+msgstr ""
+
+msgid "Profile Settings"
+msgstr ""
+
+msgid "Runtime fan speed"
+msgstr ""
+
+msgid "Runtime insight"
+msgstr ""
+
+msgid "Save & Apply below to persist changes."
+msgstr ""
+
+msgid "Sensor unavailable"
+msgstr ""
+
+msgid "Smart"
+msgstr ""
+
+msgid "Smart mode"
+msgstr ""
+
+msgid "Smart mode follows CPU temperature and ramps the pwm-fan duty automatically."
+msgstr ""
+
+msgid "Smart start threshold"
+msgstr ""
+
+msgid "Smart start threshold must be a valid integer."
+msgstr ""
+
+msgid "Smart start threshold must be greater than the stop threshold."
+msgstr ""
+
+msgid "Smart stop threshold"
+msgstr ""
+
+msgid "Smart stop threshold must be a valid integer."
+msgstr ""
+
+msgid "Smart stop threshold must stay below the start threshold."
+msgstr ""
+
+msgid "Standby"
+msgstr ""
+
+msgid "Start the fan daemon on Save & Apply. Smart mode follows CPU temperature, Turbo holds 100%, and Manual applies the slider target on pwm-fan capable boards."
+msgstr ""
+
+msgid "Temperature in Celsius where Smart mode drops back to zero duty. Keep it at least 3 C below the start threshold."
+msgstr ""
+
+msgid "Temperature in Celsius where Smart mode ramps the fan into a clearly audible cooling state."
+msgstr ""
+
+msgid "Thermal ladder"
+msgstr ""
+
+msgid "This device does not currently expose a writable pwm-fan hwmon interface or an active writable fan trip point."
+msgstr ""
+
+msgid "Threshold reached"
+msgstr ""
+
+msgid "Turbo"
+msgstr ""
+
+msgid "Turbo and Manual modes require pwm-fan hwmon support on the target board."
+msgstr ""
+
+msgid "Turbo and Manual require pwm-fan hwmon support. Smart mode also falls back to writable thermal trip control on older targets."
+msgstr ""
+
+msgid "Turbo mode"
+msgstr ""
+
+msgid "Turbo mode keeps the fan at maximum duty after Save & Apply."
+msgstr ""
+
+msgid "Unavailable"
+msgstr ""
+
+msgid "Use these shortcuts to load Turbo, Smart or Manual targets into the form below before Save & Apply."
+msgstr ""
+
+msgid "Waiting for telemetry..."
+msgstr ""
+
+msgid "before next trip"
+msgstr ""
+
+msgid "to start"
+msgstr ""
