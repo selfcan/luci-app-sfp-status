@@ -1,6 +1,6 @@
 {
 	"admin/status/luci-fan": {
-		"title": "Fan Control",
+		"title": "风扇控制",
 		"order": 60,
 		"action": {
 			"type": "view",

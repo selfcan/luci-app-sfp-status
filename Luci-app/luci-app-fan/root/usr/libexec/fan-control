@@ -98,8 +98,8 @@ get_fan_tp() {
             trip=$(cat "${cdev}_trip_point" 2>/dev/null) || continue
             grep -Fwq active "trip_point_${trip}_type" || continue
 
-            perms=$(stat -c '%#a' "trip_point_${trip}_temp" 2>/dev/null || echo 0444)
-            [ "$perms" = '0644' ] || continue
+            [ -w "trip_point_${trip}_temp" ] || continue
+            [ -w "trip_point_${trip}_hyst" ] || continue
 
             temp=$(cat "trip_point_${trip}_temp" 2>/dev/null) || continue
 
@@ -134,16 +134,13 @@ get_fan_tp() {
 get_fan_tp_cached() {
     ensure_cache_dir
 
-    if [ -f "$SAVE" ]; then
-        if [ -s "$SAVE" ]; then
-            cat "$SAVE"
-            return 0
-        fi
-
-        return 1
+    if [ -s "$SAVE" ]; then
+        cat "$SAVE"
+        return 0
     fi
 
-    get_fan_tp | tee "$SAVE"
+    rm -f "$SAVE"
+    get_fan_tp >"$SAVE"
     [ -s "$SAVE" ]
 }
 
@@ -151,14 +148,20 @@ get_fan_tp_user() {
     set -- $(get_fan_tp_cached)
     [ -n "$1" ] && [ -n "$2" ] || return 1
 
-    on_temp=$(cat "/sys/class/thermal/$1/trip_point_${2}_temp" 2>/dev/null) || return 1
+    on_temp=$(cat "/sys/class/thermal/$1/trip_point_${2}_temp" 2>/dev/null) || {
+        rm -f "$SAVE"
+        set -- $(get_fan_tp_cached)
+        [ -n "$1" ] && [ -n "$2" ] || return 1
+        on_temp=$(cat "/sys/class/thermal/$1/trip_point_${2}_temp" 2>/dev/null) || return 1
+    }
+
     echo "$1" "$2" "$on_temp" "$4"
     return 0
 }
 
 init_fan_tp() {
     ensure_cache_dir
-    [ -f "$SAVE" ] || get_fan_tp >"$SAVE"
+    [ -s "$SAVE" ] || get_fan_tp >"$SAVE"
 }
 
 resolve_pwm_hwmon() {

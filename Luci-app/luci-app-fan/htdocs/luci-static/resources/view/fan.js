@@ -400,7 +400,7 @@ return view.extend({
 		var startDelta = (this.runtime && this.runtime.zone_temp !== null && preview.on !== null) ? (preview.on - this.runtime.zone_temp) : null;
 
 		if (!this.runtime || !this.runtime.supported) {
-			hints.push(this.runtime && this.runtime.error ? this.runtime.error : texts.unsupportedHint);
+			hints.push(texts.unsupportedHint);
 		} else if (!preview.enabled) {
 			hints.push(texts.enableAndSave);
 		} else if (preview.mode === 'turbo') {
@@ -590,26 +590,38 @@ return view.extend({
 		context.restore();
 	},
 
+	deriveAnimationSpeed: function(preview, demand) {
+		var rpm = this.runtime ? this.runtime.fan_rpm : null;
+
+		if (rpm !== null) {
+			if (rpm <= 0)
+				return 0;
+
+			return 0.12 + (clamp(rpm, 0, 6500) / 6500) * 1.33;
+		}
+
+		if (!preview.enabled)
+			return 0.08;
+
+		if (preview.mode === 'turbo')
+			return 1.25;
+		if (preview.mode === 'manual')
+			return 0.22 + (demand * 0.95);
+		if (this.runtime && this.runtime.state === 'active')
+			return 0.55 + (demand * 0.8);
+		if (this.runtime && this.runtime.state === 'transition')
+			return 0.3 + (demand * 0.5);
+
+		return 0.15 + (demand * 0.3);
+	},
+
 	animationLoop: function(timestamp) {
 		if (!this.root || !document.body.contains(this.root))
 			return;
 
 		var preview = this.runtime ? this.getPreview() : { enabled: false, mode: 'smart', manual_pwm: 70, on: null, off: null };
 		var demand = this.runtime ? this.deriveDemand(preview) : 0;
-		var speed = 0.08;
-
-		if (preview.enabled) {
-			if (preview.mode === 'turbo')
-				speed = 1.25;
-			else if (preview.mode === 'manual')
-				speed = 0.22 + (demand * 0.95);
-			else if (this.runtime && this.runtime.state === 'active')
-				speed = 0.55 + (demand * 0.8);
-			else if (this.runtime && this.runtime.state === 'transition')
-				speed = 0.3 + (demand * 0.5);
-			else
-				speed = 0.15 + (demand * 0.3);
-		}
+		var speed = this.deriveAnimationSpeed(preview, demand);
 
 		if (!this.lastTick)
 			this.lastTick = timestamp;
@@ -799,7 +811,7 @@ return view.extend({
 		else
 			this.nodes.supportChip.style.display = 'none';
 
-		this.setText(this.nodes.supportChip, this.runtime.supported ? texts.modeUnsupportedHint : (this.runtime.error || texts.unsupportedHint));
+		this.setText(this.nodes.supportChip, this.runtime.supported ? texts.modeUnsupportedHint : texts.unsupportedHint);
 	},
 
 	updateRuntime: function(data) {
