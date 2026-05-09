@@ -214,7 +214,10 @@ function recommendedSmartWindow(status) {
 }
 
 return view.extend({
-	requestFrame: window.requestAnimationFrame || function(callback) {
+	requestFrame: function(callback) {
+		if (window.requestAnimationFrame)
+			return window.requestAnimationFrame.call(window, callback);
+
 		return window.setTimeout(function() { callback(Date.now()); }, 33);
 	},
 

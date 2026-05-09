@@ -1,5 +1,5 @@
 {
-	"admin/system/luci-fan": {
+	"admin/status/luci-fan": {
 		"title": "Fan Control",
 		"order": 60,
 		"action": {
