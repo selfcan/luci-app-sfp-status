@@ -16,6 +16,14 @@ read_trimmed() {
     printf '%s' "$value" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
+read_number() {
+    value=$(read_trimmed "$1") || return 1
+    [ -n "$value" ] || return 1
+    value=$(printf '%s\n' "$value" | sed -n 's/[^0-9]*\([0-9][0-9]*\).*/\1/p' | head -n1)
+    [ -n "$value" ] || return 1
+    printf '%s\n' "$value"
+}
+
 is_uint() {
     case "$1" in
         ''|*[!0-9]*)
@@ -73,49 +81,74 @@ resolve_pwm_rpm_path() {
     hwmon=
     pwm_device=
     hwmon_device=
+    pwm_parent=
 
     PWM_RPM_PATH=''
 
-    for candidate in "$PWM_HWMON"/fan*_input "$PWM_HWMON"/fan*_speed "$PWM_HWMON"/fan*_rpm "$PWM_HWMON"/rpm; do
-        [ -r "$candidate" ] || continue
+    candidate=$(find_rpm_candidate_in_dir "$PWM_HWMON") || candidate=''
+    if [ -n "$candidate" ]; then
         PWM_RPM_PATH="$candidate"
         return 0
-    done
+    fi
 
     pwm_device=$(readlink -f "$PWM_HWMON/device" 2>/dev/null) || pwm_device=''
+    pwm_parent=$(dirname "$pwm_device" 2>/dev/null)
+
+    for hwmon in "$pwm_device" "$pwm_device"/hwmon/hwmon* "$pwm_parent"/hwmon/hwmon*; do
+        candidate=$(find_rpm_candidate_in_dir "$hwmon") || candidate=''
+        if [ -n "$candidate" ]; then
+            PWM_RPM_PATH="$candidate"
+            return 0
+        fi
+    done
 
     for hwmon in /sys/class/hwmon/hwmon*; do
         [ -d "$hwmon" ] || continue
         [ "$hwmon" = "$PWM_HWMON" ] && continue
 
-        for candidate in "$hwmon"/fan*_input "$hwmon"/fan*_speed "$hwmon"/fan*_rpm "$hwmon"/rpm; do
-            [ -r "$candidate" ] || continue
+        candidate=$(find_rpm_candidate_in_dir "$hwmon") || candidate=''
+        [ -n "$candidate" ] || continue
 
-            hwmon_device=$(readlink -f "$hwmon/device" 2>/dev/null) || hwmon_device=''
+        hwmon_device=$(readlink -f "$hwmon/device" 2>/dev/null) || hwmon_device=''
 
-            if [ -n "$pwm_device" ] && [ -n "$hwmon_device" ]; then
-                case "$hwmon_device" in
-                    "$pwm_device"|"$pwm_device"/*)
-                        PWM_RPM_PATH="$candidate"
-                        return 0
-                        ;;
-                esac
+        if [ -n "$pwm_device" ] && [ -n "$hwmon_device" ]; then
+            case "$hwmon_device" in
+                "$pwm_device"|"$pwm_device"/*)
+                    PWM_RPM_PATH="$candidate"
+                    return 0
+                    ;;
+            esac
 
-                case "$pwm_device" in
-                    "$hwmon_device"|"$hwmon_device"/*)
-                        PWM_RPM_PATH="$candidate"
-                        return 0
-                        ;;
-                esac
-            fi
+            case "$pwm_device" in
+                "$hwmon_device"|"$hwmon_device"/*)
+                    PWM_RPM_PATH="$candidate"
+                    return 0
+                    ;;
+            esac
+        fi
 
-            [ -n "$fallback" ] || fallback="$candidate"
-        done
+        [ -n "$fallback" ] || fallback="$candidate"
     done
 
     [ -n "$fallback" ] || return 1
     PWM_RPM_PATH="$fallback"
     return 0
+}
+
+find_rpm_candidate_in_dir() {
+    base=$1
+    candidate=
+
+    [ -n "$base" ] || return 1
+    [ -d "$base" ] || return 1
+
+    for candidate in "$base"/fan*_input "$base"/fan*_speed "$base"/fan*_rpm "$base"/rpm; do
+        [ -r "$candidate" ] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
 }
 
 resolve_primary_thermal_zone() {
@@ -318,11 +351,8 @@ set_pwm_raw() {
     resolve_pwm_hwmon_cached || return 1
 
     if [ -n "$PWM_ENABLE_PATH" ]; then
-        if [ "$raw" -gt 0 ]; then
-            echo 2 >"$PWM_ENABLE_PATH" 2>/dev/null || echo 1 >"$PWM_ENABLE_PATH" 2>/dev/null
-        else
-            echo 0 >"$PWM_ENABLE_PATH" 2>/dev/null || true
-        fi
+        # Direct pwm1 writes require manual mode; mode 2 commonly means hardware auto.
+        echo 1 >"$PWM_ENABLE_PATH" 2>/dev/null || true
     fi
 
     echo "$raw" >"$PWM_PATH"
@@ -332,7 +362,7 @@ disable_pwm() {
     resolve_pwm_hwmon_cached || return 0
 
     if [ -n "$PWM_ENABLE_PATH" ]; then
-        echo 0 >"$PWM_ENABLE_PATH" 2>/dev/null || true
+        echo 1 >"$PWM_ENABLE_PATH" 2>/dev/null || true
     fi
 
     echo 0 >"$PWM_PATH" 2>/dev/null || true
@@ -596,6 +626,7 @@ case "$ACTION" in
         daemon_loop
     ;;
     init)
+        rm -f "$SAVE" "$PWM_SAVE"
         init_fan_tp
         resolve_pwm_hwmon_cached >/dev/null 2>&1 || true
     ;;

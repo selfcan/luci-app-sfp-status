@@ -44,34 +44,25 @@ read_number() {
 
 	value=$(read_trimmed "$1") || return 1
 	[ -n "$value" ] || return 1
+	value=$(printf '%s\n' "$value" | sed -n 's/[^0-9]*\([0-9][0-9]*\).*/\1/p' | head -n1)
+	[ -n "$value" ] || return 1
 	printf '%s\n' "$value"
 }
 
-milli_to_celsius() {
-	[ -n "$1" ] || return 1
-	awk -v value="$1" 'BEGIN { printf "%.1f", value / 1000 }'
-}
+find_rpm_candidate_in_dir() {
+	local base candidate
 
-compute_ratio() {
-	awk -v current="$1" -v off="$2" -v next="$3" -v start="$4" '
-		BEGIN {
-			ratio = 0
-			if (off != "" && next != "" && next > off)
-				ratio = (current - off) / (next - off)
-			else if (start != "" && start > 0)
-				ratio = current / start
-			if (ratio < 0)
-				ratio = 0
-			else if (ratio > 1)
-				ratio = 1
-			printf "%.3f", ratio
-		}
-	'
-}
+	base=$1
+	[ -n "$base" ] || return 1
+	[ -d "$base" ] || return 1
 
-pwm_to_percent() {
-	[ -n "$1" ] || return 1
-	awk -v value="$1" 'BEGIN { printf "%d", int((value * 100 / 255) + 0.5) }'
+	for candidate in "$base"/fan*_input "$base"/fan*_speed "$base"/fan*_rpm "$base"/rpm; do
+		[ -r "$candidate" ] || continue
+		printf '%s\n' "$candidate"
+		return 0
+	done
+
+	return 1
 }
 
 get_uci_temp() {
@@ -82,46 +73,83 @@ get_uci_temp() {
 	printf '%s\n' "$value"
 }
 
+milli_to_celsius() {
+	awk -v value="$1" 'BEGIN { printf "%.1f", value / 1000 }'
+}
+
+
+pwm_to_percent() {
+	awk -v raw="$1" 'BEGIN { printf "%d", int((raw * 100 / 255) + 0.5) }'
+}
+
+compute_ratio() {
+	awk -v current="$1" -v off="$2" -v next="$3" -v start="$4" 'BEGIN {
+		ratio = 0
+
+		if (current != "") {
+			if (off != "" && next != "" && next > off)
+				ratio = (current - off) / (next - off)
+			else if (start != "" && start > 0)
+				ratio = current / start
+		}
+
+		if (ratio < 0)
+			ratio = 0
+		else if (ratio > 1)
+			ratio = 1
+
+		printf "%.3f", ratio
+	}'
+}
+
 resolve_pwm_rpm_path() {
-	local candidate fallback hwmon pwm_device hwmon_device
+	local candidate fallback hwmon pwm_device hwmon_device pwm_parent
 
 	PWM_RPM_PATH=''
 
-	for candidate in "$PWM_HWMON"/fan*_input "$PWM_HWMON"/fan*_speed "$PWM_HWMON"/fan*_rpm "$PWM_HWMON"/rpm; do
-		[ -r "$candidate" ] || continue
+	candidate=$(find_rpm_candidate_in_dir "$PWM_HWMON") || candidate=''
+	if [ -n "$candidate" ]; then
 		PWM_RPM_PATH="$candidate"
 		return 0
-	done
+	fi
 
 	pwm_device=$(readlink -f "$PWM_HWMON/device" 2>/dev/null) || pwm_device=''
+	pwm_parent=$(dirname "$pwm_device" 2>/dev/null)
+
+	for hwmon in "$pwm_device" "$pwm_device"/hwmon/hwmon* "$pwm_parent"/hwmon/hwmon*; do
+		candidate=$(find_rpm_candidate_in_dir "$hwmon") || candidate=''
+		if [ -n "$candidate" ]; then
+			PWM_RPM_PATH="$candidate"
+			return 0
+		fi
+	done
 
 	for hwmon in "${IPKG_INSTROOT}"/sys/class/hwmon/hwmon*; do
 		[ -d "$hwmon" ] || continue
 		[ "$hwmon" = "$PWM_HWMON" ] && continue
 
-		for candidate in "$hwmon"/fan*_input "$hwmon"/fan*_speed "$hwmon"/fan*_rpm "$hwmon"/rpm; do
-			[ -r "$candidate" ] || continue
+		candidate=$(find_rpm_candidate_in_dir "$hwmon") || candidate=''
+		[ -n "$candidate" ] || continue
 
-			hwmon_device=$(readlink -f "$hwmon/device" 2>/dev/null) || hwmon_device=''
+		hwmon_device=$(readlink -f "$hwmon/device" 2>/dev/null) || hwmon_device=''
 
-			if [ -n "$pwm_device" ] && [ -n "$hwmon_device" ]; then
-				case "$hwmon_device" in
-					"$pwm_device"|"$pwm_device"/*)
-						PWM_RPM_PATH="$candidate"
-						return 0
-						;;
-				esac
+		if [ -n "$pwm_device" ] && [ -n "$hwmon_device" ]; then
+			case "$hwmon_device" in
+				"$pwm_device"|"$pwm_device"/*)
+					PWM_RPM_PATH="$candidate"
+					return 0
+					;;
+			esac
 
-				case "$pwm_device" in
-					"$hwmon_device"|"$hwmon_device"/*)
-						PWM_RPM_PATH="$candidate"
-						return 0
-						;;
-				esac
-			fi
+			case "$pwm_device" in
+				"$hwmon_device"|"$hwmon_device"/*)
+					PWM_RPM_PATH="$candidate"
+					return 0
+					;;
+			esac
+		fi
 
-			[ -n "$fallback" ] || fallback="$candidate"
-		done
+		[ -n "$fallback" ] || fallback="$candidate"
 	done
 
 	[ -n "$fallback" ] || return 1
