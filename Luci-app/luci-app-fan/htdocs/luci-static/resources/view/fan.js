@@ -39,8 +39,8 @@ var dashboardStyle = [
 	'.lf-dashboard { position: relative; z-index: 1; padding: 28px; color: #eef6ef; }',
 	'.lf-hero { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr); gap: 24px; align-items: stretch; }',
 	'.lf-eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }',
-	'.lf-copy h3 { margin: 16px 0 10px; padding: 0 !important; min-height: 0 !important; background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; font-size: 30px; font-weight: 700; line-height: 1.15; color: #ffffff !important; }',
-	'.lf-copy h3:before, .lf-copy h3:after { display: none !important; content: none !important; }',
+	'.lf-headline { display: block; width: auto; margin: 16px 0 10px; padding: 0; min-height: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 30px; font-weight: 700; line-height: 1.15; color: #ffffff; }',
+	'.lf-headline:before, .lf-headline:after { display: none; content: none; }',
 	'.lf-copy p { max-width: 52rem; margin: 0; font-size: 14px; line-height: 1.7; color: rgba(238, 246, 239, 0.88); }',
 	'.lf-chip-row, .lf-metrics, .lf-grid, .lf-config-grid, .lf-ladder-scale { display: grid; gap: 14px; }',
 	'.lf-chip-row { grid-template-columns: repeat(auto-fit, minmax(140px, max-content)); margin-top: 18px; }',
@@ -101,7 +101,7 @@ var dashboardStyle = [
 	'.lf-dashboard-shell + .cbi-map input[type="range"] { width: 100%; accent-color: #1d6d5d; }',
 	'.lf-range-output { display: inline-flex; align-items: center; justify-content: center; min-width: 72px; margin-top: 10px; padding: 6px 12px; border-radius: 999px; background: rgba(23, 55, 60, 0.08); color: #17373c; font-size: 12px; font-weight: 600; }',
 	'@media screen and (max-width: 1180px) { .lf-hero, .lf-grid { grid-template-columns: 1fr; } .lf-metrics, .lf-preset-list, .lf-ladder-scale { grid-template-columns: repeat(2, minmax(0, 1fr)); } }',
-	'@media screen and (max-width: 760px) { .lf-dashboard { padding: 20px; } .lf-copy h3 { font-size: 24px; } .lf-metrics, .lf-preset-list, .lf-grid, .lf-config-grid, .lf-ladder-scale { grid-template-columns: 1fr; } .lf-orb { min-height: 240px; } }'
+	'@media screen and (max-width: 760px) { .lf-dashboard { padding: 20px; } .lf-headline { font-size: 24px; } .lf-metrics, .lf-preset-list, .lf-grid, .lf-config-grid, .lf-ladder-scale { grid-template-columns: 1fr; } .lf-orb { min-height: 240px; } }'
 ].join('\n');
 
 var texts = {
@@ -704,7 +704,7 @@ return view.extend({
 			'<div class="lf-hero">' +
 				'<div class="lf-copy">' +
 					'<div class="lf-eyebrow">' + escapeHtml(t('Adaptive Fan Profile', '自适应风扇控制')) + '</div>' +
-					'<h3>' + escapeHtml(t('Live Cooling Dashboard', '实时散热面板')) + '</h3>' +
+					'<div class="lf-headline">' + escapeHtml(t('Live Cooling Dashboard', '实时散热面板')) + '</div>' +
 					'<p>' + escapeHtml(heroText) + '</p>' +
 					'<div class="lf-chip-row">' +
 						'<span class="lf-chip">' + primaryChip + '</span>' +

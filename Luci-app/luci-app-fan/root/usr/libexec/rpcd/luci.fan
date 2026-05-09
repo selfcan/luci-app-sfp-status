@@ -87,7 +87,7 @@ resolve_pwm_rpm_path() {
 
 	PWM_RPM_PATH=''
 
-	for candidate in "$PWM_HWMON"/fan*_input; do
+	for candidate in "$PWM_HWMON"/fan*_input "$PWM_HWMON"/fan*_speed "$PWM_HWMON"/fan*_rpm "$PWM_HWMON"/rpm; do
 		[ -r "$candidate" ] || continue
 		PWM_RPM_PATH="$candidate"
 		return 0
@@ -99,7 +99,7 @@ resolve_pwm_rpm_path() {
 		[ -d "$hwmon" ] || continue
 		[ "$hwmon" = "$PWM_HWMON" ] && continue
 
-		for candidate in "$hwmon"/fan*_input; do
+		for candidate in "$hwmon"/fan*_input "$hwmon"/fan*_speed "$hwmon"/fan*_rpm "$hwmon"/rpm; do
 			[ -r "$candidate" ] || continue
 
 			hwmon_device=$(readlink -f "$hwmon/device" 2>/dev/null) || hwmon_device=''
