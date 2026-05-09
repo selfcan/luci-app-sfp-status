@@ -6,7 +6,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-fan
-PKG_RELEASE:=10
+PKG_VERSION:=0.1.0
+PKG_RELEASE:=11
 PKG_LICENSE:=Apache-2.0
 
 LUCI_TITLE:=LuCI fan control

@@ -11,6 +11,25 @@ var callGetStatus = rpc.declare({
 	expect: { '': {} }
 });
 
+function hasChineseLocale() {
+	if (typeof document === 'undefined')
+		return false;
+
+	var bodyClass = document.body ? (document.body.className || '') : '';
+	var htmlLang = document.documentElement ? (document.documentElement.lang || '') : '';
+
+	return /\blang_zh(?:[-_][^\s]+)?\b/i.test(bodyClass) || /^zh(?:-|_|$)/i.test(htmlLang);
+}
+
+function t(message, fallback) {
+	var translated = _(message);
+
+	if (translated !== message || !fallback || !hasChineseLocale())
+		return translated;
+
+	return fallback;
+}
+
 var dashboardStyle = [
 	'.lf-page { display: grid; gap: 18px; }',
 	'.lf-dashboard-shell { position: relative; overflow: hidden; border: 0; border-radius: 24px; box-shadow: 0 20px 40px rgba(12, 37, 45, 0.16); background: linear-gradient(135deg, #15363b 0%, #1d544b 48%, #87601f 100%); }',
@@ -71,7 +90,7 @@ var dashboardStyle = [
 	'.lf-config-item span { display: block; font-size: 11px; line-height: 1.5; color: rgba(238, 246, 239, 0.76); }',
 	'.lf-config-item strong { display: block; margin-top: 6px; font-size: 18px; line-height: 1.3; color: #ffffff; }',
 	'.lf-dashboard-shell + .cbi-map { margin-top: 0; border-radius: 22px; border: 1px solid rgba(19, 57, 62, 0.08); box-shadow: 0 12px 30px rgba(17, 48, 54, 0.08); overflow: hidden; background: linear-gradient(180deg, rgba(251, 252, 250, 0.98), rgba(243, 247, 244, 0.98)); }',
-	'.lf-dashboard-shell + .cbi-map > h2, .lf-dashboard-shell + .cbi-map > .cbi-map-descr { padding-left: 24px; padding-right: 24px; }',
+	'.lf-dashboard-shell + .cbi-map > h2, .lf-dashboard-shell + .cbi-map > .cbi-map-descr { display: none; }',
 	'.lf-dashboard-shell + .cbi-map .cbi-section { margin: 0; border: 0; box-shadow: none; background: transparent; }',
 	'.lf-dashboard-shell + .cbi-map .cbi-section-node { padding-top: 6px; background: transparent; }',
 	'.lf-dashboard-shell + .cbi-map .cbi-section-node h3 { margin-top: 4px; font-size: 20px; color: #17373c; }',
@@ -85,39 +104,39 @@ var dashboardStyle = [
 ].join('\n');
 
 var texts = {
-	enabled: _('Enabled'),
-	disabled: _('Disabled'),
-	active: _('Cooling active'),
-	transition: _('Modulating'),
-	standby: _('Standby'),
-	unsupported: _('Unavailable'),
-	unavailable: _('Sensor unavailable'),
-	toStart: _('to start'),
-	beforeNextTrip: _('before next trip'),
-	thresholdReached: _('Threshold reached'),
-	ceilingHidden: _('Ceiling not exposed'),
-	bpiTip: _('BPI-R4 routers usually benefit from a slightly lower smart start temperature when Wi-Fi or NSS load ramps up quickly.'),
-	hysteresisTip: _('Off temperature should stay at least 3 C below the start threshold for stable smart mode modulation.'),
-	currentAboveStart: _('Current temperature is already above the smart start threshold. Save carefully to avoid sudden fan jumps.'),
-	saveApply: _('Save & Apply below to persist changes.'),
-	enableAndSave: _('Enable the service and Save & Apply to start the fan daemon.'),
-	loadedToForm: _('Loaded into the form'),
-	notAvailable: _('Not available'),
-	unsupportedHint: _('This device does not currently expose a writable pwm-fan hwmon interface or an active writable fan trip point.'),
-	modeUnsupportedHint: _('Turbo and Manual modes require pwm-fan hwmon support on the target board.'),
-	telemetryWaiting: _('Waiting for telemetry...'),
-	monitoringState: _('Monitoring state'),
-	currentDevice: _('Current device'),
-	bpiHero: _('BPI-R4 tuned layout with live CPU temperature, PWM duty, tachometer feedback and three operating modes.'),
-	genericHero: _('Live OpenWrt cooling dashboard with smart, manual and turbo profiles when the target hardware exposes pwm-fan telemetry.'),
-	turbo: _('Turbo'),
-	smart: _('Smart'),
-	manual: _('Manual'),
-	turboHint: _('Turbo mode keeps the fan at maximum duty after Save & Apply.'),
-	smartHint: _('Smart mode follows CPU temperature and ramps the pwm-fan duty automatically.'),
-	manualHint: _('Manual mode applies the selected duty target after Save & Apply.'),
-	modePending: _('Mode target'),
-	currentDuty: _('Current fan duty')
+	enabled: t('Enabled', '已启用'),
+	disabled: t('Disabled', '未启用'),
+	active: t('Cooling active', '正在散热'),
+	transition: t('Modulating', '调速中'),
+	standby: t('Standby', '待机'),
+	unsupported: t('Unavailable', '不可用'),
+	unavailable: t('Sensor unavailable', '传感器不可用'),
+	toStart: t('to start', '后启动'),
+	beforeNextTrip: t('before next trip', '距下一触发点还有'),
+	thresholdReached: t('Threshold reached', '已达到阈值'),
+	ceilingHidden: t('Ceiling not exposed', '未提供上限温度'),
+	bpiTip: t('BPI-R4 routers usually benefit from a slightly lower smart start temperature when Wi-Fi or NSS load ramps up quickly.', '对 BPI-R4 来说，在 Wi-Fi 或 NSS 负载快速上升时，适当降低智能启动温度通常会更稳妥。'),
+	hysteresisTip: t('Off temperature should stay at least 3 C below the start threshold for stable smart mode modulation.', '为保证智能调速稳定，停止温度建议至少比启动阈值低 3 摄氏度。'),
+	currentAboveStart: t('Current temperature is already above the smart start threshold. Save carefully to avoid sudden fan jumps.', '当前温度已经高于智能启动阈值，保存时请留意避免风扇突然升速。'),
+	saveApply: t('Save & Apply below to persist changes.', '需要点击下方的“保存并应用”后，修改才会真正生效。'),
+	enableAndSave: t('Enable the service and Save & Apply to start the fan daemon.', '启用服务后，再点击“保存并应用”即可启动风扇守护进程。'),
+	loadedToForm: t('Loaded into the form', '已写入表单'),
+	notAvailable: t('Not available', '不可用'),
+	unsupportedHint: t('This device does not currently expose a writable pwm-fan hwmon interface or an active writable fan trip point.', '当前设备未检测到可写的 PWM 风扇 hwmon 接口，也没有可调整的活动风扇热阈值。'),
+	modeUnsupportedHint: t('Turbo and Manual modes require pwm-fan hwmon support on the target board.', '狂暴模式和手动模式需要目标设备提供 pwm-fan hwmon 支持。'),
+	telemetryWaiting: t('Waiting for telemetry...', '正在等待遥测数据...'),
+	monitoringState: t('Monitoring state', '监控状态'),
+	currentDevice: t('Current device', '当前设备'),
+	bpiHero: t('BPI-R4 tuned layout with live CPU temperature, PWM duty, tachometer feedback and three operating modes.', '已针对 BPI-R4 优化，实时展示 CPU 温度、PWM 占空比、风扇转速反馈和三种控制模式。'),
+	genericHero: t('Live OpenWrt cooling dashboard with smart, manual and turbo profiles when the target hardware exposes pwm-fan telemetry.', '当目标硬件提供 pwm-fan 遥测能力时，可在这里实时查看 OpenWrt 散热状态，并切换智能、手动和狂暴三种模式。'),
+	turbo: t('Turbo', '狂暴'),
+	smart: t('Smart', '智能'),
+	manual: t('Manual', '手动'),
+	turboHint: t('Turbo mode keeps the fan at maximum duty after Save & Apply.', '狂暴模式在“保存并应用”后会让风扇保持最大占空比。'),
+	smartHint: t('Smart mode follows CPU temperature and ramps the pwm-fan duty automatically.', '智能模式会根据 CPU 温度自动调节 pwm-fan 占空比。'),
+	manualHint: t('Manual mode applies the selected duty target after Save & Apply.', '手动模式会在“保存并应用”后采用所选占空比。'),
+	modePending: t('Mode target', '目标模式'),
+	currentDuty: t('Current fan duty', '当前风扇占空比')
 };
 
 function toNumber(value) {
@@ -446,6 +465,7 @@ return view.extend({
 			return;
 
 		var preview = this.getPreview();
+		this.updateOptionVisibility(preview.mode);
 		this.updateMetricCards(preview);
 		this.updateLadder(preview);
 		this.updateDemand(preview);
@@ -482,6 +502,23 @@ return view.extend({
 		this.syncFormState();
 	},
 
+	setFieldVisible: function(node, visible) {
+		if (!node)
+			return;
+
+		node.classList.toggle('hidden', !visible);
+		node.style.display = visible ? '' : 'none';
+	},
+
+	updateOptionVisibility: function(mode) {
+		var isManual = mode === 'manual';
+		var isSmart = mode === 'smart';
+
+		this.setFieldVisible(this.fieldRows.manual, isManual);
+		this.setFieldVisible(this.fieldRows.on, isSmart);
+		this.setFieldVisible(this.fieldRows.off, isSmart);
+	},
+
 	bindFields: function() {
 		var manualField;
 
@@ -491,6 +528,11 @@ return view.extend({
 			manual: this.mapNode.querySelector('[data-name="manual_pwm"] input'),
 			on: this.mapNode.querySelector('[data-name="on_temp"] input'),
 			off: this.mapNode.querySelector('[data-name="off_temp"] input')
+		};
+		this.fieldRows = {
+			manual: this.mapNode.querySelector('[data-name="manual_pwm"]'),
+			on: this.mapNode.querySelector('[data-name="on_temp"]'),
+			off: this.mapNode.querySelector('[data-name="off_temp"]')
 		};
 
 		if (this.fields.manual) {
@@ -523,6 +565,8 @@ return view.extend({
 				this.pickProfile(event.currentTarget.getAttribute('data-preset'));
 			}.bind(this));
 		}, this);
+
+		this.updateOptionVisibility(this.fields.mode ? this.fields.mode.value : 'smart');
 	},
 
 	drawFan: function(demand) {
@@ -658,8 +702,8 @@ return view.extend({
 		dashboard.innerHTML = '' +
 			'<div class="lf-hero">' +
 				'<div class="lf-copy">' +
-					'<div class="lf-eyebrow">' + escapeHtml(_('Adaptive Fan Profile')) + '</div>' +
-					'<h3>' + escapeHtml(_('Live Cooling Dashboard')) + '</h3>' +
+					'<div class="lf-eyebrow">' + escapeHtml(t('Adaptive Fan Profile', '自适应风扇控制')) + '</div>' +
+					'<h3>' + escapeHtml(t('Live Cooling Dashboard', '实时散热面板')) + '</h3>' +
 					'<p>' + escapeHtml(heroText) + '</p>' +
 					'<div class="lf-chip-row">' +
 						'<span class="lf-chip">' + primaryChip + '</span>' +
@@ -687,14 +731,14 @@ return view.extend({
 				'</div>' +
 			'</div>' +
 			'<div class="lf-metrics">' +
-				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(_('CPU temperature')) + '</div><div class="lf-metric-value" id="lf-metric-cpu">--</div></div>' +
-				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(_('Fan speed')) + '</div><div class="lf-metric-value" id="lf-metric-fan">--</div></div>' +
-				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(_('Current PWM duty')) + '</div><div class="lf-metric-value" id="lf-metric-pwm">--</div></div>' +
-				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(_('Control mode')) + '</div><div class="lf-metric-value" id="lf-metric-mode">--</div></div>' +
+				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(t('CPU temperature', 'CPU 温度')) + '</div><div class="lf-metric-value" id="lf-metric-cpu">--</div></div>' +
+				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(t('Fan speed', '风扇转速')) + '</div><div class="lf-metric-value" id="lf-metric-fan">--</div></div>' +
+				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(t('Current PWM duty', '当前 PWM 占空比')) + '</div><div class="lf-metric-value" id="lf-metric-pwm">--</div></div>' +
+				'<div class="lf-metric"><div class="lf-metric-label">' + escapeHtml(t('Control mode', '控制模式')) + '</div><div class="lf-metric-value" id="lf-metric-mode">--</div></div>' +
 			'</div>' +
 			'<div class="lf-ladder-card">' +
 				'<div class="lf-ladder-head">' +
-					'<h4>' + escapeHtml(_('Thermal ladder')) + '</h4>' +
+					'<h4>' + escapeHtml(t('Thermal ladder', '温控阶梯')) + '</h4>' +
 					'<span class="lf-source-pill" id="lf-source-label">' + sourceText + '</span>' +
 				'</div>' +
 				'<div class="lf-ladder-track">' +
@@ -704,36 +748,36 @@ return view.extend({
 					'<div class="lf-marker" id="lf-marker-next"></div>' +
 				'</div>' +
 				'<div class="lf-ladder-scale">' +
-					'<div class="lf-scale-item"><span>' + escapeHtml(_('Fan stop temperature')) + '</span><strong id="lf-scale-off">--</strong></div>' +
-					'<div class="lf-scale-item"><span>' + escapeHtml(_('Current temperature')) + '</span><strong id="lf-scale-current">--</strong></div>' +
-					'<div class="lf-scale-item"><span>' + escapeHtml(_('Fan start temperature')) + '</span><strong id="lf-scale-on">--</strong></div>' +
-					'<div class="lf-scale-item"><span>' + escapeHtml(_('Next trip ceiling')) + '</span><strong id="lf-scale-next">--</strong></div>' +
+					'<div class="lf-scale-item"><span>' + escapeHtml(t('Fan stop temperature', '风扇停止温度')) + '</span><strong id="lf-scale-off">--</strong></div>' +
+					'<div class="lf-scale-item"><span>' + escapeHtml(t('Current temperature', '当前温度')) + '</span><strong id="lf-scale-current">--</strong></div>' +
+					'<div class="lf-scale-item"><span>' + escapeHtml(t('Fan start temperature', '风扇启动温度')) + '</span><strong id="lf-scale-on">--</strong></div>' +
+					'<div class="lf-scale-item"><span>' + escapeHtml(t('Next trip ceiling', '下一触发点上限')) + '</span><strong id="lf-scale-next">--</strong></div>' +
 				'</div>' +
 			'</div>' +
 			'<div class="lf-grid">' +
 				'<div class="lf-card">' +
-					'<h4>' + escapeHtml(_('Operating profiles')) + '</h4>' +
-					'<p>' + escapeHtml(_('Use these shortcuts to load Turbo, Smart or Manual targets into the form below before Save & Apply.')) + '</p>' +
+					'<h4>' + escapeHtml(t('Operating profiles', '运行模式')) + '</h4>' +
+					'<p>' + escapeHtml(t('Use these shortcuts to load Turbo, Smart or Manual targets into the form below before Save & Apply.', '可用这些快捷按钮把狂暴、智能或手动目标写入下方表单，然后再执行“保存并应用”。')) + '</p>' +
 					'<div class="lf-preset-list">' +
-						'<button type="button" class="lf-preset" data-preset="turbo">' + escapeHtml(_('Turbo mode')) + '</button>' +
-						'<button type="button" class="lf-preset" data-preset="smart">' + escapeHtml(_('Smart mode')) + '</button>' +
-						'<button type="button" class="lf-preset" data-preset="manual">' + escapeHtml(_('Manual mode')) + '</button>' +
+						'<button type="button" class="lf-preset" data-preset="turbo">' + escapeHtml(t('Turbo mode', '狂暴模式')) + '</button>' +
+						'<button type="button" class="lf-preset" data-preset="smart">' + escapeHtml(t('Smart mode', '智能模式')) + '</button>' +
+						'<button type="button" class="lf-preset" data-preset="manual">' + escapeHtml(t('Manual mode', '手动模式')) + '</button>' +
 					'</div>' +
 					'<p class="lf-note" id="lf-preset-note">' + escapeHtml(texts.saveApply) + '</p>' +
 				'</div>' +
 				'<div class="lf-card">' +
-					'<h4>' + escapeHtml(_('Runtime insight')) + '</h4>' +
+					'<h4>' + escapeHtml(t('Runtime insight', '运行提示')) + '</h4>' +
 					'<div class="lf-insights" id="lf-insights"><p class="lf-insight">' + escapeHtml(texts.telemetryWaiting) + '</p></div>' +
 				'</div>' +
 				'<div class="lf-card">' +
-					'<h4>' + escapeHtml(_('Current config')) + '</h4>' +
+					'<h4>' + escapeHtml(t('Current config', '当前设置')) + '</h4>' +
 					'<div class="lf-config-grid">' +
-						'<div class="lf-config-item"><span>' + escapeHtml(_('Enabled in UCI')) + '</span><strong id="lf-config-enabled">--</strong></div>' +
-						'<div class="lf-config-item"><span>' + escapeHtml(_('Control mode')) + '</span><strong id="lf-config-mode">--</strong></div>' +
-						'<div class="lf-config-item"><span>' + escapeHtml(_('Manual target')) + '</span><strong id="lf-config-manual">--</strong></div>' +
-						'<div class="lf-config-item"><span>' + escapeHtml(_('Runtime fan speed')) + '</span><strong id="lf-config-rpm">--</strong></div>' +
-						'<div class="lf-config-item"><span>' + escapeHtml(_('Smart start threshold')) + '</span><strong id="lf-config-on">--</strong></div>' +
-						'<div class="lf-config-item"><span>' + escapeHtml(_('Smart stop threshold')) + '</span><strong id="lf-config-off">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(t('Enabled in UCI', 'UCI 启用状态')) + '</span><strong id="lf-config-enabled">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(t('Control mode', '控制模式')) + '</span><strong id="lf-config-mode">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(t('Manual target', '手动目标')) + '</span><strong id="lf-config-manual">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(t('Runtime fan speed', '当前风扇转速')) + '</span><strong id="lf-config-rpm">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(t('Smart start threshold', '智能启动阈值')) + '</span><strong id="lf-config-on">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(t('Smart stop threshold', '智能停止阈值')) + '</span><strong id="lf-config-off">--</strong></div>' +
 					'</div>' +
 				'</div>' +
 			'</div>';
@@ -823,39 +867,39 @@ return view.extend({
 	render: function(data) {
 		var initialStatus = normalizeStatus(data[1]);
 		var defaults = recommendedSmartWindow(initialStatus);
-		var m = new form.Map('luci-fan', _('Fan Control'), _('Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty and tachometer feedback over ubus.'));
-		var s = m.section(form.TypedSection, 'luci-fan', _('Profile Settings'));
+		var m = new form.Map('luci-fan', t('Fan Control', '风扇控制'), t('Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty and tachometer feedback over ubus.', '为 BPI-R4 等支持 pwm-fan 的设备配置智能、狂暴和手动风扇模式。实时面板会通过 ubus 读取 CPU 温度、PWM 占空比和风扇转速反馈。'));
+		var s = m.section(form.TypedSection, 'luci-fan', t('Profile Settings', '基本设置'));
 		var o;
 		var dashboard = this.renderDashboardShell(initialStatus);
 
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Flag, 'enabled', _('Enable fan service'));
+		o = s.option(form.Flag, 'enabled', t('Enable fan service', '启用风扇服务'));
 		o.rmempty = false;
 		o.default = '0';
-		o.description = _('Start the fan daemon on Save & Apply. Smart mode follows CPU temperature, Turbo holds 100%, and Manual applies the slider target on pwm-fan capable boards.');
+		o.description = t('Start the fan daemon on Save & Apply. Smart mode follows CPU temperature, Turbo holds 100%, and Manual applies the slider target on pwm-fan capable boards.', '点击“保存并应用”后会启动风扇守护进程。智能模式跟随 CPU 温度，狂暴模式固定 100%，手动模式会在支持 pwm-fan 的设备上应用滑条目标。');
 
-		o = s.option(form.ListValue, 'mode', _('Control mode'));
+		o = s.option(form.ListValue, 'mode', t('Control mode', '控制模式'));
 		o.rmempty = false;
 		o.default = initialStatus.mode || 'smart';
-		o.value('smart', _('Smart'));
-		o.value('turbo', _('Turbo'));
-		o.value('manual', _('Manual'));
-		o.description = _('Turbo and Manual require pwm-fan hwmon support. Smart mode also falls back to writable thermal trip control on older targets.');
+		o.value('smart', t('Smart', '智能'));
+		o.value('turbo', t('Turbo', '狂暴'));
+		o.value('manual', t('Manual', '手动'));
+		o.description = t('Turbo and Manual require pwm-fan hwmon support. Smart mode also falls back to writable thermal trip control on older targets.', '狂暴模式和手动模式需要 pwm-fan hwmon 支持。对于较旧的平台，智能模式也可以回退到可写的热阈值控制。');
 
-		o = s.option(form.Value, 'manual_pwm', _('Manual PWM target'));
+		o = s.option(form.Value, 'manual_pwm', t('Manual PWM target', '手动 PWM 目标'));
 		o.datatype = 'and(uinteger,min(0),max(100))';
 		o.placeholder = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
 		o.default = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
-		o.description = _('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value.');
+		o.description = t('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value.', '手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM。');
 		o.depends('mode', 'manual');
 
-		o = s.option(form.Value, 'on_temp', _('Smart start threshold'));
+		o = s.option(form.Value, 'on_temp', t('Smart start threshold', '智能启动阈值'));
 		o.datatype = 'and(uinteger,min(6),max(120))';
 		o.placeholder = String(defaults.on);
 		o.default = String(defaults.on);
-		o.description = _('Temperature in Celsius where Smart mode ramps the fan into a clearly audible cooling state.');
+		o.description = t('Temperature in Celsius where Smart mode ramps the fan into a clearly audible cooling state.', '智能模式开始明显拉高风扇转速的温度，单位为摄氏度。');
 		o.depends('mode', 'smart');
 		o.validate = function(sectionId, value) {
 			var offOption = this.map.lookupOption('off_temp', sectionId);
@@ -863,18 +907,18 @@ return view.extend({
 			var startValue = parseInt(value, 10);
 
 			if (isNaN(startValue))
-				return _('Smart start threshold must be a valid integer.');
+				return t('Smart start threshold must be a valid integer.', '智能启动阈值必须是有效整数。');
 			if (!isNaN(offValue) && startValue <= offValue)
-				return _('Smart start threshold must be greater than the stop threshold.');
+				return t('Smart start threshold must be greater than the stop threshold.', '智能启动阈值必须高于停止阈值。');
 
 			return true;
 		};
 
-		o = s.option(form.Value, 'off_temp', _('Smart stop threshold'));
+		o = s.option(form.Value, 'off_temp', t('Smart stop threshold', '智能停止阈值'));
 		o.datatype = 'and(uinteger,min(5),max(119))';
 		o.placeholder = String(defaults.off);
 		o.default = String(defaults.off);
-		o.description = _('Temperature in Celsius where Smart mode drops back to zero duty. Keep it at least 3 C below the start threshold.');
+		o.description = t('Temperature in Celsius where Smart mode drops back to zero duty. Keep it at least 3 C below the start threshold.', '智能模式降回 0 占空比的温度，单位为摄氏度。建议至少比启动阈值低 3 摄氏度。');
 		o.depends('mode', 'smart');
 		o.validate = function(sectionId, value) {
 			var onOption = this.map.lookupOption('on_temp', sectionId);
@@ -882,17 +926,17 @@ return view.extend({
 			var stopValue = parseInt(value, 10);
 
 			if (isNaN(stopValue))
-				return _('Smart stop threshold must be a valid integer.');
+				return t('Smart stop threshold must be a valid integer.', '智能停止阈值必须是有效整数。');
 			if (!isNaN(onValue) && stopValue >= onValue)
-				return _('Smart stop threshold must stay below the start threshold.');
+				return t('Smart stop threshold must stay below the start threshold.', '智能停止阈值必须低于启动阈值。');
 			return true;
 		};
 
-		o = s.option(form.Value, 'poll_interval', _('Polling interval'));
+		o = s.option(form.Value, 'poll_interval', t('Polling interval', '轮询间隔'));
 		o.datatype = 'and(uinteger,min(1),max(30))';
 		o.placeholder = String(initialStatus.poll_interval != null ? Math.round(initialStatus.poll_interval) : 3);
 		o.default = String(initialStatus.poll_interval != null ? Math.round(initialStatus.poll_interval) : 3);
-		o.description = _('Fan daemon loop interval in seconds. Lower values react faster, higher values reduce churn.');
+		o.description = t('Fan daemon loop interval in seconds. Lower values react faster, higher values reduce churn.', '风扇守护进程的轮询间隔，单位为秒。值越小响应越快，值越大越平稳。');
 
 		return m.render().then(function(mapNode) {
 			this.mapNode = mapNode;
