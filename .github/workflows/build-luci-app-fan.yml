@@ -180,8 +180,29 @@ jobs:
         working-directory: ${{ env.SDK_DIR }}
         run: |
           set -eux
+          package_po_dir="$SDK_DIR/feeds/luci/applications/luci-app-fan/po"
+          fan_i18n_langs=''
+
+          if [ -d "$package_po_dir" ]; then
+            fan_i18n_langs="$(find "$package_po_dir" -mindepth 1 -maxdepth 1 -type d ! -name templates -printf '%f\n' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
+          fi
+
           echo 'CONFIG_PACKAGE_luci-app-fan=y' >> .config
+
+          for lang in $fan_i18n_langs; do
+            echo "CONFIG_PACKAGE_luci-i18n-fan-${lang}=y" >> .config
+          done
+
           make defconfig
+
+          {
+            echo 'FAN_I18N_LANGS<<EOF'
+            printf '%s\n' "$fan_i18n_langs"
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+
+          grep '^CONFIG_PACKAGE_luci-app-fan=' .config
+          grep '^CONFIG_PACKAGE_luci-i18n-fan-' .config || true
 
       - name: Compile package
         working-directory: ${{ env.SDK_DIR }}
@@ -202,6 +223,16 @@ jobs:
             echo 'No luci-app-fan ipk was produced by the build.' >&2
             find "$SDK_DIR/bin/packages" -maxdepth 4 -type f | sort >&2
             exit 1
+          fi
+
+          if [ -n "${FAN_I18N_LANGS:-}" ]; then
+            for lang in $FAN_I18N_LANGS; do
+              if ! find "$artifact_dir" -maxdepth 1 -type f -name "luci-i18n-fan-${lang}_*.ipk" | grep -q .; then
+                echo "No luci-i18n-fan-${lang} ipk was produced by the build." >&2
+                find "$SDK_DIR/bin/packages" -maxdepth 4 -type f | sort >&2
+                exit 1
+              fi
+            done
           fi
 
           echo "ARTIFACT_DIR=$artifact_dir" >> "$GITHUB_ENV"
