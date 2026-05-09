@@ -286,7 +286,7 @@ get_status() {
 	local zone_path next_trip_index primary_zone_path
 	local fan_on_temp zone_temp fan_off_temp next_trip_temp thermal_type hysteresis headroom start_delta load_ratio
 	local configured_on configured_off configured_on_milli configured_off_milli hysteresis_value state
-	local thermal_supported pwm_supported runtime_error supported trip_point_value
+	local thermal_supported pwm_supported mode_supported runtime_error supported trip_point_value
 
 	load_board_profile
 	ENABLED=$(uci -q get luci-fan.@luci-fan[0].enabled 2>/dev/null)
@@ -333,6 +333,20 @@ get_status() {
 	if read_pwm_runtime; then
 		pwm_supported=1
 	fi
+
+	mode_supported=0
+	case "$MODE" in
+		smart)
+			if [ "$thermal_supported" = '1' ] || [ "$pwm_supported" = '1' ]; then
+				mode_supported=1
+			fi
+			;;
+		*)
+			if [ "$pwm_supported" = '1' ]; then
+				mode_supported=1
+			fi
+			;;
+	esac
 
 	configured_on=$(get_uci_temp on_temp) || configured_on=''
 	configured_off=$(get_uci_temp off_temp) || configured_off=''
@@ -407,7 +421,7 @@ get_status() {
 	json_add_string state "$state"
 	json_add_boolean thermal_supported "$thermal_supported"
 	json_add_boolean pwm_supported "$pwm_supported"
-	json_add_boolean mode_supported "$pwm_supported"
+	json_add_boolean mode_supported "$mode_supported"
 	json_add_string hwmon_name "$PWM_NAME"
 	json_add_string hwmon_path "$PWM_HWMON"
 	json_add_string pwm_raw "$PWM_RAW"

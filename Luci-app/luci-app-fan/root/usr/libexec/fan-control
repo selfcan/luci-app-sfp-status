@@ -491,9 +491,16 @@ apply_current_config() {
         esac
     fi
 
-    on_milli=$((on_temp * 1000))
-    off_milli=$((off_temp * 1000))
-    set_fan_tp "$on_milli" "$off_milli"
+    case "$mode" in
+        smart)
+            on_milli=$((on_temp * 1000))
+            off_milli=$((off_temp * 1000))
+            set_fan_tp "$on_milli" "$off_milli"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 daemon_loop() {
