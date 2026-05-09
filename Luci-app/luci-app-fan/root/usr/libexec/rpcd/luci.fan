@@ -248,23 +248,19 @@ resolve_primary_thermal_zone() {
 }
 
 load_board_profile() {
-	local lowered normalized
+	local lowered
 
 	BOARD_NAME=$(read_trimmed "$SYSINFO_DIR/board_name") || BOARD_NAME=''
 	MODEL_NAME=$(read_trimmed "$SYSINFO_DIR/model") || MODEL_NAME=''
-	lowered=$(printf '%s %s' "$BOARD_NAME" "$MODEL_NAME" | tr '[:upper:]' '[:lower:]')
-	normalized=$(printf '%s\n' "$lowered" | tr -cs 'a-z0-9' ' ')
+	lowered=$(printf '%s %s\n' "$BOARD_NAME" "$MODEL_NAME" | tr '[:upper:]' '[:lower:]')
 
-	case "$lowered $normalized" in
-		*bpi-r4*|*bpi\ r4*|*bananapi*bpi-r4*|*bananapi*bpi\ r4*|*mt7988*)
-			IS_BPI_R4=1
-			PROFILE='bpi-r4'
-			;;
-		*)
-			IS_BPI_R4=0
-			PROFILE='generic'
-			;;
-	esac
+	if printf '%s\n' "$lowered" | grep -Eiq 'bpi[-[:space:]]*r4|mt7988'; then
+		IS_BPI_R4=1
+		PROFILE='bpi-r4'
+	else
+		IS_BPI_R4=0
+		PROFILE='generic'
+	fi
 }
 
 resolve_zone_trip() {
