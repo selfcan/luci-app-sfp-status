@@ -184,7 +184,7 @@ jobs:
           fan_i18n_langs=''
 
           if [ -d "$package_po_dir" ]; then
-            fan_i18n_langs="$(find "$package_po_dir" -mindepth 1 -maxdepth 1 -type d ! -name templates -printf '%f\n' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
+            fan_i18n_langs="$(find "$package_po_dir" -mindepth 2 -maxdepth 2 -type f -name '*.po' -printf '%h\n' | sed 's#^.*/##' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
           fi
 
           echo 'CONFIG_PACKAGE_luci-app-fan=y' >> .config
