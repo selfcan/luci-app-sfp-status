@@ -147,13 +147,29 @@ jobs:
           set -eux
           make package/feeds/luci/luci-app-fan/compile -j"$(nproc)" V=s
 
+      - name: Collect build artifacts
+        run: |
+          set -eux
+          artifact_dir="$RUNNER_TEMP/luci-app-fan-artifacts"
+          rm -rf "$artifact_dir"
+          mkdir -p "$artifact_dir"
+
+          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-app-fan*.ipk' -o -path '*/luci/Packages*' \) -exec cp -f {} "$artifact_dir/" \;
+
+          if ! find "$artifact_dir" -maxdepth 1 -type f -name 'luci-app-fan*.ipk' | grep -q .; then
+            echo 'No luci-app-fan ipk was produced by the build.' >&2
+            find "$SDK_DIR/bin/packages" -maxdepth 4 -type f | sort >&2
+            exit 1
+          fi
+
+          echo "ARTIFACT_DIR=$artifact_dir" >> "$GITHUB_ENV"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: luci-app-fan-${{ env.OPENWRT_TARGET }}-${{ env.OPENWRT_SUBTARGET }}-ipk
-          path: |
-            ${{ env.SDK_DIR }}/bin/packages/*/luci/luci-app-fan*.ipk
-            ${{ env.SDK_DIR }}/bin/packages/*/luci/Packages*
+          path: ${{ env.ARTIFACT_DIR }}/
+          if-no-files-found: error
 
   release:
     needs: build
