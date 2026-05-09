@@ -101,15 +101,32 @@ jobs:
       - name: Inject package into LuCI feed
         run: |
           set -eux
-          if [ -f "$GITHUB_WORKSPACE/luci-app-fan/Makefile" ]; then
-            package_src="$GITHUB_WORKSPACE/luci-app-fan"
-          elif [ -f "$GITHUB_WORKSPACE/Makefile" ]; then
-            package_src="$GITHUB_WORKSPACE"
-          else
+          package_src=''
+          package_makefile=''
+
+          for candidate in \
+            "$GITHUB_WORKSPACE/luci-app-fan" \
+            "$GITHUB_WORKSPACE/Luci-app/luci-app-fan" \
+            "$GITHUB_WORKSPACE"
+          do
+            if [ -f "$candidate/Makefile" ] && grep -q '^PKG_NAME:=luci-app-fan$' "$candidate/Makefile"; then
+              package_src="$candidate"
+              package_makefile="$candidate/Makefile"
+              break
+            fi
+          done
+
+          if [ -z "$package_src" ]; then
             echo "Unable to locate luci-app-fan Makefile in workspace" >&2
-            echo "Checked: $GITHUB_WORKSPACE/luci-app-fan/Makefile and $GITHUB_WORKSPACE/Makefile" >&2
+            echo "Checked: $GITHUB_WORKSPACE/luci-app-fan/Makefile, $GITHUB_WORKSPACE/Luci-app/luci-app-fan/Makefile and $GITHUB_WORKSPACE/Makefile (PKG_NAME must be luci-app-fan)" >&2
+            if [ -f "$GITHUB_WORKSPACE/Makefile" ]; then
+              echo "Workspace root Makefile PKG_NAME:" >&2
+              grep '^PKG_NAME:=' "$GITHUB_WORKSPACE/Makefile" >&2 || true
+            fi
             exit 1
           fi
+
+          grep -q '^PKG_NAME:=luci-app-fan$' "$package_makefile"
 
           sdk_feed_dir="$SDK_DIR/feeds/luci/applications/luci-app-fan"
           sdk_pkg_dir="$SDK_DIR/package/feeds/luci/luci-app-fan"
@@ -127,6 +144,7 @@ jobs:
           ln -sfn "../../../feeds/luci/applications/luci-app-fan" "$sdk_pkg_dir"
           test -f "$sdk_feed_dir/Makefile"
           test -f "$sdk_pkg_dir/Makefile"
+          grep -q '^PKG_NAME:=luci-app-fan$' "$sdk_feed_dir/Makefile"
 
       - name: Install package definitions
         working-directory: ${{ env.SDK_DIR }}
@@ -154,7 +172,7 @@ jobs:
           rm -rf "$artifact_dir"
           mkdir -p "$artifact_dir"
 
-          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-app-fan*.ipk' -o -path '*/luci/Packages*' \) -exec cp -f {} "$artifact_dir/" \;
+          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-app-fan*.ipk' -o -name 'luci-i18n-fan*.ipk' -o -path '*/luci/Packages*' \) -exec cp -f {} "$artifact_dir/" \;
 
           if ! find "$artifact_dir" -maxdepth 1 -type f -name 'luci-app-fan*.ipk' | grep -q .; then
             echo 'No luci-app-fan ipk was produced by the build.' >&2
