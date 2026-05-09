@@ -82,6 +82,53 @@ get_uci_temp() {
 	printf '%s\n' "$value"
 }
 
+resolve_pwm_rpm_path() {
+	local candidate fallback hwmon pwm_device hwmon_device
+
+	PWM_RPM_PATH=''
+
+	for candidate in "$PWM_HWMON"/fan*_input; do
+		[ -r "$candidate" ] || continue
+		PWM_RPM_PATH="$candidate"
+		return 0
+	done
+
+	pwm_device=$(readlink -f "$PWM_HWMON/device" 2>/dev/null) || pwm_device=''
+
+	for hwmon in "${IPKG_INSTROOT}"/sys/class/hwmon/hwmon*; do
+		[ -d "$hwmon" ] || continue
+		[ "$hwmon" = "$PWM_HWMON" ] && continue
+
+		for candidate in "$hwmon"/fan*_input; do
+			[ -r "$candidate" ] || continue
+
+			hwmon_device=$(readlink -f "$hwmon/device" 2>/dev/null) || hwmon_device=''
+
+			if [ -n "$pwm_device" ] && [ -n "$hwmon_device" ]; then
+				case "$hwmon_device" in
+					"$pwm_device"|"$pwm_device"/*)
+						PWM_RPM_PATH="$candidate"
+						return 0
+						;;
+				esac
+
+				case "$pwm_device" in
+					"$hwmon_device"|"$hwmon_device"/*)
+						PWM_RPM_PATH="$candidate"
+						return 0
+						;;
+				esac
+			fi
+
+			[ -n "$fallback" ] || fallback="$candidate"
+		done
+	done
+
+	[ -n "$fallback" ] || return 1
+	PWM_RPM_PATH="$fallback"
+	return 0
+}
+
 resolve_pwm_hwmon() {
 	local hwmon entry preferred fallback name
 
@@ -115,7 +162,7 @@ resolve_pwm_hwmon() {
 	PWM_RPM_PATH=''
 
 	[ -w "$PWM_HWMON/pwm1_enable" ] && PWM_ENABLE_PATH="$PWM_HWMON/pwm1_enable"
-	[ -r "$PWM_HWMON/fan1_input" ] && PWM_RPM_PATH="$PWM_HWMON/fan1_input"
+	resolve_pwm_rpm_path || true
 	return 0
 }
 
