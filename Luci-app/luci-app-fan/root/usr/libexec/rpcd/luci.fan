@@ -248,14 +248,15 @@ resolve_primary_thermal_zone() {
 }
 
 load_board_profile() {
-	local lowered
+	local lowered normalized
 
 	BOARD_NAME=$(read_trimmed "$SYSINFO_DIR/board_name") || BOARD_NAME=''
 	MODEL_NAME=$(read_trimmed "$SYSINFO_DIR/model") || MODEL_NAME=''
 	lowered=$(printf '%s %s' "$BOARD_NAME" "$MODEL_NAME" | tr '[:upper:]' '[:lower:]')
+	normalized=$(printf '%s\n' "$lowered" | tr -cs 'a-z0-9' ' ')
 
-	case "$lowered" in
-		*bpi-r4*|*banana\ pi\ bpi-r4*|*mt7988*)
+	case "$lowered $normalized" in
+		*bpi-r4*|*bpi\ r4*|*bananapi*bpi-r4*|*bananapi*bpi\ r4*|*mt7988*)
 			IS_BPI_R4=1
 			PROFILE='bpi-r4'
 			;;
@@ -313,6 +314,7 @@ json_add_empty_runtime() {
 get_status() {
 	local zone_path next_trip_index primary_zone_path
 	local fan_on_temp zone_temp fan_off_temp next_trip_temp thermal_type hysteresis headroom start_delta load_ratio
+	local effective_on_temp effective_off_temp effective_next_trip effective_hysteresis
 	local configured_on configured_off configured_on_milli configured_off_milli hysteresis_value state
 	local thermal_supported pwm_supported mode_supported runtime_error supported trip_point_value
 
@@ -399,6 +401,22 @@ get_status() {
 		hysteresis_value=$hysteresis
 	fi
 
+	effective_on_temp=$fan_on_temp
+	effective_off_temp=$fan_off_temp
+	effective_next_trip=$next_trip_temp
+	effective_hysteresis=$hysteresis
+
+	# When smart mode is driven by writable PWM, the actual control thresholds come
+	# from UCI instead of the kernel thermal trip points.
+	if [ "$MODE" = 'smart' ] && [ "$pwm_supported" = '1' ]; then
+		[ -n "$configured_on_milli" ] && effective_on_temp=$configured_on_milli
+		[ -n "$configured_off_milli" ] && effective_off_temp=$configured_off_milli
+
+		if [ -n "$effective_on_temp" ] && [ -n "$effective_off_temp" ] && [ "$effective_on_temp" -gt "$effective_off_temp" ]; then
+			effective_hysteresis=$((effective_on_temp - effective_off_temp))
+		fi
+	fi
+
 	state='disabled'
 	if [ "$ENABLED" = '1' ]; then
 		if [ "$pwm_supported" = '1' ] && [ -n "$PWM_RAW" ]; then
@@ -409,9 +427,9 @@ get_status() {
 			else
 				state='standby'
 			fi
-		elif [ -n "$zone_temp" ] && [ -n "$fan_on_temp" ] && [ "$zone_temp" -ge "$fan_on_temp" ]; then
+		elif [ -n "$zone_temp" ] && [ -n "$effective_on_temp" ] && [ "$zone_temp" -ge "$effective_on_temp" ]; then
 			state='active'
-		elif [ -n "$zone_temp" ] && [ -n "$fan_off_temp" ] && [ "$zone_temp" -gt "$fan_off_temp" ]; then
+		elif [ -n "$zone_temp" ] && [ -n "$effective_off_temp" ] && [ "$zone_temp" -gt "$effective_off_temp" ]; then
 			state='transition'
 		else
 			state='standby'
@@ -419,10 +437,10 @@ get_status() {
 	fi
 
 	headroom=''
-	[ -n "$next_trip_temp" ] && [ -n "$zone_temp" ] && headroom=$((next_trip_temp - zone_temp))
+	[ -n "$effective_next_trip" ] && [ -n "$zone_temp" ] && headroom=$((effective_next_trip - zone_temp))
 	start_delta=''
-	[ -n "$fan_on_temp" ] && [ -n "$zone_temp" ] && start_delta=$((fan_on_temp - zone_temp))
-	load_ratio=$(compute_ratio "$zone_temp" "$fan_off_temp" "$next_trip_temp" "$fan_on_temp")
+	[ -n "$effective_on_temp" ] && [ -n "$zone_temp" ] && start_delta=$((effective_on_temp - zone_temp))
+	load_ratio=$(compute_ratio "$zone_temp" "$effective_off_temp" "$effective_next_trip" "$effective_on_temp")
 	supported=0
 	[ "$thermal_supported" = '1' ] || [ "$pwm_supported" = '1' ] && supported=1
 	[ "$thermal_supported" = '1' ] && supported=1
@@ -437,12 +455,12 @@ get_status() {
 	json_add_int trip_point "$trip_point_value"
 	json_add_string thermal_type "$thermal_type"
 	json_add_string zone_temp "$(milli_to_celsius "$zone_temp")"
-	json_add_string fan_on_temp "$(milli_to_celsius "$fan_on_temp")"
-	json_add_string fan_off_temp "$(milli_to_celsius "$fan_off_temp")"
+	json_add_string fan_on_temp "$(milli_to_celsius "$effective_on_temp")"
+	json_add_string fan_off_temp "$(milli_to_celsius "$effective_off_temp")"
 	json_add_string configured_on_temp "$( [ -n "$configured_on_milli" ] && milli_to_celsius "$configured_on_milli" )"
 	json_add_string configured_off_temp "$( [ -n "$configured_off_milli" ] && milli_to_celsius "$configured_off_milli" )"
-	json_add_string hysteresis "$( [ -n "$hysteresis" ] && milli_to_celsius "$hysteresis" )"
-	json_add_string next_trip_temp "$( [ -n "$next_trip_temp" ] && milli_to_celsius "$next_trip_temp" )"
+	json_add_string hysteresis "$( [ -n "$effective_hysteresis" ] && milli_to_celsius "$effective_hysteresis" )"
+	json_add_string next_trip_temp "$( [ -n "$effective_next_trip" ] && milli_to_celsius "$effective_next_trip" )"
 	json_add_string headroom "$( [ -n "$headroom" ] && milli_to_celsius "$headroom" )"
 	json_add_string start_delta "$(milli_to_celsius "$start_delta")"
 	json_add_string load_ratio "$load_ratio"
