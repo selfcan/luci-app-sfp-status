@@ -38,8 +38,9 @@ var dashboardStyle = [
 	'.lf-dashboard-shell:after { left: -100px; bottom: -120px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(125, 244, 205, 0.22) 0%, rgba(125, 244, 205, 0) 72%); }',
 	'.lf-dashboard { position: relative; z-index: 1; padding: 28px; color: #eef6ef; }',
 	'.lf-hero { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr); gap: 24px; align-items: stretch; }',
+	'.lf-copy { min-width: 0; }',
 	'.lf-eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }',
-	'.lf-headline { display: block; width: auto; margin: 16px 0 10px; padding: 0; min-height: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 30px; font-weight: 700; line-height: 1.15; color: #ffffff; }',
+	'.lf-headline { all: unset; display: block !important; width: auto !important; margin: 16px 0 10px !important; padding: 0 !important; min-height: 0 !important; background: transparent !important; background-color: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; font-size: 30px !important; font-weight: 700 !important; line-height: 1.15 !important; color: #ffffff !important; text-shadow: none !important; }',
 	'.lf-headline:before, .lf-headline:after { display: none; content: none; }',
 	'.lf-copy p { max-width: 52rem; margin: 0; font-size: 14px; line-height: 1.7; color: rgba(238, 246, 239, 0.88); }',
 	'.lf-chip-row, .lf-metrics, .lf-grid, .lf-config-grid, .lf-ladder-scale { display: grid; gap: 14px; }',
@@ -51,10 +52,10 @@ var dashboardStyle = [
 	'.lf-runtime-badge[data-state="transition"] { background: #9adfb9; border-color: #9adfb9; color: #143325; }',
 	'.lf-runtime-badge[data-state="standby"] { background: #cbe7f0; border-color: #cbe7f0; color: #173843; }',
 	'.lf-runtime-badge[data-state="disabled"], .lf-runtime-badge[data-state="unsupported"] { background: rgba(255, 255, 255, 0.16); color: #ffffff; }',
-	'.lf-visual { display: grid; gap: 16px; align-content: start; }',
-	'.lf-orb { position: relative; min-height: 280px; border-radius: 26px; background: linear-gradient(180deg, rgba(10, 24, 28, 0.34), rgba(255, 255, 255, 0.08)); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }',
-	'.lf-orb canvas { display: block; margin: 0 auto; max-width: 100%; }',
-	'.lf-temp-readout { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }',
+	'.lf-visual { min-width: 0; display: grid; gap: 16px; align-content: start; justify-items: center; }',
+	'.lf-orb { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 280px; padding: 18px; overflow: hidden; border-radius: 26px; background: linear-gradient(180deg, rgba(10, 24, 28, 0.34), rgba(255, 255, 255, 0.08)) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important; }',
+	'.lf-orb canvas, #lf-fan-canvas { display: block !important; width: 260px !important; height: 260px !important; max-width: 100% !important; max-height: 260px !important; margin: 0 auto !important; background: transparent !important; background-color: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; outline: 0 !important; }',
+	'.lf-temp-readout { position: absolute; top: 50%; left: 50%; z-index: 1; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }',
 	'.lf-temp-number { font-size: 42px; line-height: 1; font-weight: 700; }',
 	'.lf-temp-unit { margin-top: 4px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(238, 246, 239, 0.72); }',
 	'.lf-temp-caption { margin-top: 8px; font-size: 12px; color: rgba(238, 246, 239, 0.82); }',
@@ -704,7 +705,7 @@ return view.extend({
 			'<div class="lf-hero">' +
 				'<div class="lf-copy">' +
 					'<div class="lf-eyebrow">' + escapeHtml(t('Adaptive Fan Profile', '自适应风扇控制')) + '</div>' +
-					'<div class="lf-headline">' + escapeHtml(t('Live Cooling Dashboard', '实时散热面板')) + '</div>' +
+					'<div class="lf-headline" style="all:unset;display:block;margin:16px 0 10px;padding:0;background:transparent;color:#ffffff;font-size:30px;font-weight:700;line-height:1.15;">' + escapeHtml(t('Live Cooling Dashboard', '实时散热面板')) + '</div>' +
 					'<p>' + escapeHtml(heroText) + '</p>' +
 					'<div class="lf-chip-row">' +
 						'<span class="lf-chip">' + primaryChip + '</span>' +
@@ -715,7 +716,7 @@ return view.extend({
 				'</div>' +
 				'<div class="lf-visual">' +
 					'<div class="lf-orb">' +
-						'<canvas id="lf-fan-canvas" width="260" height="260"></canvas>' +
+						'<canvas id="lf-fan-canvas" width="260" height="260" style="display:block;width:260px;height:260px;max-width:100%;background:transparent;border:0;border-radius:0;box-shadow:none;"></canvas>' +
 						'<div class="lf-temp-readout">' +
 							'<div class="lf-temp-number" id="lf-temp-number">--</div>' +
 							'<div class="lf-temp-unit">' + escapeHtml(String.fromCharCode(176) + 'C') + '</div>' +
