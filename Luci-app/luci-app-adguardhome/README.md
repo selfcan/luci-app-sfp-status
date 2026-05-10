@@ -179,10 +179,3 @@ Complex OpenWrt LuCI frontend for AdGuardHome.
 
 - Download a release and install it with opkg.
 - Or clone the project into the package path when building OpenWrt and enable it in menuconfig.
-
-### Screenshots
-
-![Screenshot_2019-12-23 newifi-d1 - 基础设置 - LuCI](.images/71361626-81d60900-25ce-11ea-91d5-ac4e35d5c41e.png)
-![图片](.images/71361650-90242500-25ce-11ea-9727-9306a3da1357.png)
-![Screenshot_2019-12-23 newifi-d1 - 日志 - LuCI(1)](.images/71361700-b944b580-25ce-11ea-8562-f68c28952b2b.png)
-![Screenshot_2019-12-23 newifi-d1 - 手动设置 - LuCI](.images/71361704-bb0e7900-25ce-11ea-8042-6dd396607030.png)
