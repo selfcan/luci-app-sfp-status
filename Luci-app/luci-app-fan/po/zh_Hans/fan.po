@@ -59,8 +59,8 @@ msgstr "监控状态"
 msgid "Current device"
 msgstr "当前设备"
 
-msgid "BPI-R4 tuned layout with live CPU temperature, PWM duty, and actual-or-estimated speed feedback across smart, manual and turbo modes."
-msgstr "已针对 BPI-R4 优化，实时展示 CPU 温度、PWM 占空比，以及智能、手动、狂暴三种模式下的真实或估算转速。"
+msgid "BPI-R4 tuned layout with live CPU temperature, PWM duty, and fan speed feedback across smart, manual and turbo modes."
+msgstr "已针对 BPI-R4 优化，实时展示 CPU 温度、PWM 占空比，以及智能、手动、狂暴三种模式下的风扇转速反馈。"
 
 msgid "Live OpenWrt cooling dashboard with a fixed 30 C to 60 C smart curve, plus manual and turbo profiles on pwm-fan capable hardware."
 msgstr "当目标硬件提供 pwm-fan 能力时，可在这里实时查看 OpenWrt 散热状态，并使用固定 30 到 60 摄氏度智能曲线、手动和狂暴三种模式。"
@@ -80,8 +80,8 @@ msgstr "狂暴模式在“保存并应用”后会把风扇锁定在约 3000 RPM
 msgid "Smart mode uses a fixed 30.0 C to 60.0 C curve: below 30.0 C the fan stops, above 60.0 C it stays at the 3000 RPM equivalent ceiling."
 msgstr "智能模式使用固定的 30.0 到 60.0 摄氏度曲线：低于 30.0 摄氏度停转，高于 60.0 摄氏度保持约 3000 RPM 的满速等效上限。"
 
-msgid "Manual mode applies the selected duty target after Save & Apply and reports speed from either the hardware sensor or PWM estimation."
-msgstr "手动模式会在“保存并应用”后采用所选占空比，并优先显示硬件反馈转速，缺失时回退到 PWM 估算转速。"
+msgid "Manual mode applies the selected duty target after Save & Apply and reports the available fan speed feedback."
+msgstr "手动模式会在“保存并应用”后采用所选占空比，并显示当前可用的风扇转速反馈。"
 
 msgid "Mode target"
 msgstr "目标模式"
@@ -95,8 +95,8 @@ msgstr "（估算）"
 msgid "(actual)"
 msgstr "（真实）"
 
-msgid "PWM estimated speed feedback"
-msgstr "PWM 估算转速反馈"
+msgid "PWM speed feedback"
+msgstr "PWM 转速反馈"
 
 msgid "Hardware speed feedback"
 msgstr "硬件转速反馈"
@@ -176,8 +176,8 @@ msgstr "当前风扇转速"
 msgid "Fan Control"
 msgstr "风扇控制"
 
-msgid "Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty, and actual-or-estimated speed feedback over ubus."
-msgstr "为 BPI-R4 等支持 pwm-fan 的设备配置智能、狂暴和手动风扇模式。实时面板会通过 ubus 读取 CPU 温度、PWM 占空比，以及真实或估算的风扇转速反馈。"
+msgid "Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty, and fan speed feedback over ubus."
+msgstr "为 BPI-R4 等支持 pwm-fan 的设备配置智能、狂暴和手动风扇模式。实时面板会通过 ubus 读取 CPU 温度、PWM 占空比，以及风扇转速反馈。"
 
 msgid "Profile Settings"
 msgstr "基本设置"
@@ -194,8 +194,8 @@ msgstr "智能模式始终遵循固定的 30.0 到 60.0 摄氏度曲线。狂暴
 msgid "Manual PWM target"
 msgstr "手动 PWM 目标"
 
-msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to roughly 3000 RPM in the estimated display."
-msgstr "手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，在估算显示中约对应 3000 RPM。"
+msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the displayed ceiling around 3000 RPM."
+msgstr "手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，对应页面显示中约 3000 RPM 的上限。"
 
 msgid "Polling interval"
 msgstr "轮询间隔"

@@ -56,7 +56,7 @@ msgstr ""
 msgid "Current device"
 msgstr ""
 
-msgid "BPI-R4 tuned layout with live CPU temperature, PWM duty, and actual-or-estimated speed feedback across smart, manual and turbo modes."
+msgid "BPI-R4 tuned layout with live CPU temperature, PWM duty, and fan speed feedback across smart, manual and turbo modes."
 msgstr ""
 
 msgid "Live OpenWrt cooling dashboard with a fixed 30 C to 60 C smart curve, plus manual and turbo profiles on pwm-fan capable hardware."
@@ -77,7 +77,7 @@ msgstr ""
 msgid "Smart mode uses a fixed 30.0 C to 60.0 C curve: below 30.0 C the fan stops, above 60.0 C it stays at the 3000 RPM equivalent ceiling."
 msgstr ""
 
-msgid "Manual mode applies the selected duty target after Save & Apply and reports speed from either the hardware sensor or PWM estimation."
+msgid "Manual mode applies the selected duty target after Save & Apply and reports the available fan speed feedback."
 msgstr ""
 
 msgid "Mode target"
@@ -92,7 +92,7 @@ msgstr ""
 msgid "(actual)"
 msgstr ""
 
-msgid "PWM estimated speed feedback"
+msgid "PWM speed feedback"
 msgstr ""
 
 msgid "Hardware speed feedback"
@@ -173,7 +173,7 @@ msgstr ""
 msgid "Fan Control"
 msgstr ""
 
-msgid "Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty, and actual-or-estimated speed feedback over ubus."
+msgid "Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty, and fan speed feedback over ubus."
 msgstr ""
 
 msgid "Profile Settings"
@@ -191,7 +191,7 @@ msgstr ""
 msgid "Manual PWM target"
 msgstr ""
 
-msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to roughly 3000 RPM in the estimated display."
+msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the displayed ceiling around 3000 RPM."
 msgstr ""
 
 msgid "Polling interval"

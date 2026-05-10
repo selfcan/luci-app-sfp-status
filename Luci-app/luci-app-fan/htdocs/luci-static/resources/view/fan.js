@@ -52,14 +52,14 @@ var dashboardStyle = [
 	'.lf-runtime-badge[data-state="transition"] { background: #9adfb9; border-color: #9adfb9; color: #143325; }',
 	'.lf-runtime-badge[data-state="standby"] { background: #cbe7f0; border-color: #cbe7f0; color: #173843; }',
 	'.lf-runtime-badge[data-state="disabled"], .lf-runtime-badge[data-state="unsupported"] { background: rgba(255, 255, 255, 0.16); color: #ffffff; }',
-	'.lf-visual { min-width: 0; display: grid; gap: 16px; align-content: start; justify-items: center; }',
+	'.lf-visual { min-width: 0; display: grid; gap: 16px; align-content: start; justify-items: stretch; }',
 	'.lf-orb { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 280px; padding: 18px; overflow: hidden; border-radius: 26px; background: linear-gradient(180deg, rgba(10, 24, 28, 0.34), rgba(255, 255, 255, 0.08)) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important; }',
 	'.lf-orb canvas, #lf-fan-canvas { display: block !important; width: 260px !important; height: 260px !important; max-width: 100% !important; max-height: 260px !important; margin: 0 auto !important; background: transparent !important; background-color: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; outline: 0 !important; }',
 	'.lf-temp-readout { position: absolute; top: 50%; left: 50%; z-index: 1; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }',
 	'.lf-temp-number { font-size: 42px; line-height: 1; font-weight: 700; }',
 	'.lf-temp-unit { margin-top: 4px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(238, 246, 239, 0.72); }',
 	'.lf-temp-caption { margin-top: 8px; font-size: 12px; color: rgba(238, 246, 239, 0.82); }',
-	'.lf-demand { padding: 16px 18px 18px; border-radius: 18px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.1); }',
+	'.lf-demand { width: 100%; box-sizing: border-box; padding: 16px 18px 18px; border-radius: 18px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.1); }',
 	'.lf-demand-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; }',
 	'.lf-demand-row strong { font-size: 18px; }',
 	'.lf-demand-bar { margin-top: 10px; height: 12px; border-radius: 999px; background: rgba(5, 16, 19, 0.34); overflow: hidden; }',
@@ -125,19 +125,19 @@ var texts = {
 	telemetryWaiting: t('Waiting for telemetry...', '正在等待遥测数据...'),
 	monitoringState: t('Monitoring state', '监控状态'),
 	currentDevice: t('Current device', '当前设备'),
-	bpiHero: t('BPI-R4 tuned layout with live CPU temperature, PWM duty, and actual-or-estimated speed feedback across smart, manual and turbo modes.', '已针对 BPI-R4 优化，实时展示 CPU 温度、PWM 占空比，以及智能、手动、狂暴三种模式下的真实或估算转速。'),
+	bpiHero: t('BPI-R4 tuned layout with live CPU temperature, PWM duty, and fan speed feedback across smart, manual and turbo modes.', '已针对 BPI-R4 优化，实时展示 CPU 温度、PWM 占空比，以及智能、手动、狂暴三种模式下的风扇转速反馈。'),
 	genericHero: t('Live OpenWrt cooling dashboard with a fixed 30 C to 60 C smart curve, plus manual and turbo profiles on pwm-fan capable hardware.', '当目标硬件提供 pwm-fan 能力时，可在这里实时查看 OpenWrt 散热状态，并使用固定 30 到 60 摄氏度智能曲线、手动和狂暴三种模式。'),
 	turbo: t('Turbo', '狂暴'),
 	smart: t('Smart', '智能'),
 	manual: t('Manual', '手动'),
 	turboHint: t('Turbo mode locks the fan at the 3000 RPM equivalent ceiling after Save & Apply.', '狂暴模式在“保存并应用”后会把风扇锁定在约 3000 RPM 的满速等效上限。'),
 	smartHint: t('Smart mode uses a fixed 30.0 C to 60.0 C curve: below 30.0 C the fan stops, above 60.0 C it stays at the 3000 RPM equivalent ceiling.', '智能模式使用固定的 30.0 到 60.0 摄氏度曲线：低于 30.0 摄氏度停转，高于 60.0 摄氏度保持约 3000 RPM 的满速等效上限。'),
-	manualHint: t('Manual mode applies the selected duty target after Save & Apply and reports speed from either the hardware sensor or PWM estimation.', '手动模式会在“保存并应用”后采用所选占空比，并优先显示硬件反馈转速，缺失时回退到 PWM 估算转速。'),
+	manualHint: t('Manual mode applies the selected duty target after Save & Apply and reports the available fan speed feedback.', '手动模式会在“保存并应用”后采用所选占空比，并显示当前可用的风扇转速反馈。'),
 	modePending: t('Mode target', '目标模式'),
 	currentDuty: t('Current fan duty', '当前风扇占空比'),
 	estimatedTag: t('(estimated)', '（估算）'),
 	actualTag: t('(actual)', '（真实）'),
-	speedSourceEstimated: t('PWM estimated speed feedback', 'PWM 估算转速反馈'),
+	speedSourceEstimated: t('PWM speed feedback', 'PWM 转速反馈'),
 	speedSourceActual: t('Hardware speed feedback', '硬件转速反馈'),
 	speedSourceUnavailable: t('Speed feedback unavailable', '转速反馈不可用'),
 	speedFeedback: t('Speed feedback', '转速反馈'),
@@ -300,14 +300,7 @@ return view.extend({
 		if (value === null || typeof value === 'undefined' || isNaN(value))
 			return texts.notAvailable;
 
-		var suffix = '';
-
-		if (source === 'estimated')
-			suffix = ' ' + texts.estimatedTag;
-		else if (source === 'actual')
-			suffix = ' ' + texts.actualTag;
-
-		return Math.round(value) + ' RPM' + suffix;
+		return Math.round(value) + ' RPM';
 	},
 
 	formatSpeedFeedback: function() {
@@ -433,12 +426,7 @@ return view.extend({
 	},
 
 	deriveDemandDisplayRatio: function(demand) {
-		if (demand <= 0)
-			return 0;
-		if (demand >= 1)
-			return 1;
-
-		return clamp(Math.pow(demand, 0.85), 0, 1);
+		return clamp(demand || 0, 0, 1);
 	},
 
 	updateMetricCards: function(preview) {
@@ -613,8 +601,11 @@ return view.extend({
 
 	updateOptionVisibility: function(mode) {
 		var isManual = mode === 'manual';
+		var isSmart = mode === 'smart';
 
 		this.setFieldVisible(this.fieldRows.manual, isManual);
+		this.setFieldVisible(this.fieldRows.smartOff, isSmart);
+		this.setFieldVisible(this.fieldRows.smartOn, isSmart);
 	},
 
 	updatePresetStates: function(mode) {
@@ -632,7 +623,9 @@ return view.extend({
 			manual: this.mapNode.querySelector('[data-name="manual_pwm"] input')
 		};
 		this.fieldRows = {
-			manual: this.mapNode.querySelector('[data-name="manual_pwm"]')
+			manual: this.mapNode.querySelector('[data-name="manual_pwm"]'),
+			smartOff: this.mapNode.querySelector('[data-name="smart_off_temp"]'),
+			smartOn: this.mapNode.querySelector('[data-name="smart_on_temp"]')
 		};
 
 		if (this.fields.manual) {
@@ -969,7 +962,9 @@ return view.extend({
 
 	render: function(data) {
 		var initialStatus = normalizeStatus(data[1]);
-		var m = new form.Map('luci-fan', t('Fan Control', '风扇控制'), t('Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty, and actual-or-estimated speed feedback over ubus.', '为 BPI-R4 等支持 pwm-fan 的设备配置智能、狂暴和手动风扇模式。实时面板会通过 ubus 读取 CPU 温度、PWM 占空比，以及真实或估算的风扇转速反馈。'));
+		var smartWindow = recommendedSmartWindow(initialStatus);
+		var degreeUnit = this.degreeUnit;
+		var m = new form.Map('luci-fan', t('Fan Control', '风扇控制'), t('Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty, and fan speed feedback over ubus.', '为 BPI-R4 等支持 pwm-fan 的设备配置智能、狂暴和手动风扇模式。实时面板会通过 ubus 读取 CPU 温度、PWM 占空比，以及风扇转速反馈。'));
 		var s = m.section(form.TypedSection, 'luci-fan', t('Profile Settings', '基本设置'));
 		var o;
 		var dashboard = this.renderDashboardShell(initialStatus);
@@ -990,11 +985,25 @@ return view.extend({
 		o.value('manual', t('Manual', '手动'));
 		o.description = t('Smart mode always follows the fixed 30.0 C to 60.0 C curve. Turbo and Manual require pwm-fan hwmon support on the target board.', '智能模式始终遵循固定的 30.0 到 60.0 摄氏度曲线。狂暴模式和手动模式需要目标设备提供 pwm-fan hwmon 支持。');
 
+		o = s.option(form.DummyValue, 'smart_off_temp', texts.smartFloor);
+		o.rawhtml = false;
+		o.cfgvalue = function() {
+			return smartWindow.off.toFixed(1) + degreeUnit;
+		};
+		o.depends('mode', 'smart');
+
+		o = s.option(form.DummyValue, 'smart_on_temp', texts.smartCeiling);
+		o.rawhtml = false;
+		o.cfgvalue = function() {
+			return smartWindow.on.toFixed(1) + degreeUnit;
+		};
+		o.depends('mode', 'smart');
+
 		o = s.option(form.Value, 'manual_pwm', t('Manual PWM target', '手动 PWM 目标'));
 		o.datatype = 'and(uinteger,min(0),max(100))';
 		o.placeholder = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
 		o.default = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
-		o.description = t('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to roughly 3000 RPM in the estimated display.', '手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，在估算显示中约对应 3000 RPM。');
+		o.description = t('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the displayed ceiling around 3000 RPM.', '手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，对应页面显示中约 3000 RPM 的上限。');
 		o.depends('mode', 'manual');
 
 		o = s.option(form.Value, 'poll_interval', t('Polling interval', '轮询间隔'));
