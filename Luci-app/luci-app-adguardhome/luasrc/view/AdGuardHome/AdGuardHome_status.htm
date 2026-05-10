@@ -1,0 +1,377 @@
+<style>
+	.adh-overview {
+		position: relative;
+		overflow: hidden;
+		padding: 24px;
+		border-radius: 22px;
+		border: 1px solid rgba(56, 107, 113, 0.18);
+		background:
+			radial-gradient(circle at top right, rgba(61, 136, 98, 0.18), transparent 34%),
+			radial-gradient(circle at bottom left, rgba(30, 92, 135, 0.18), transparent 30%),
+			linear-gradient(135deg, rgba(12, 54, 84, 0.08), rgba(28, 95, 76, 0.05));
+		box-shadow: 0 18px 38px rgba(14, 30, 37, 0.08);
+	}
+
+	.adh-overview:before {
+		content: "";
+		position: absolute;
+		inset: -80px auto auto -60px;
+		width: 220px;
+		height: 220px;
+		border-radius: 50%;
+		background: rgba(89, 169, 128, 0.12);
+		filter: blur(6px);
+		pointer-events: none;
+	}
+
+	.adh-hero,
+	.adh-grid,
+	.adh-notes {
+		position: relative;
+		z-index: 1;
+	}
+
+	.adh-hero {
+		display: flex;
+		justify-content: space-between;
+		gap: 18px;
+		align-items: flex-start;
+		margin-bottom: 18px;
+	}
+
+	.adh-title {
+		margin: 0;
+		font-size: 1.55rem;
+		font-weight: 700;
+		letter-spacing: 0.01em;
+	}
+
+	.adh-subtitle {
+		margin: 10px 0 0;
+		max-width: 760px;
+		line-height: 1.65;
+		opacity: 0.86;
+	}
+
+	.adh-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		margin-top: 14px;
+	}
+
+	.adh-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.56);
+		border: 1px solid rgba(55, 96, 120, 0.12);
+		font-size: 12px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.adh-dot {
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: #7b8794;
+		box-shadow: 0 0 0 5px rgba(123, 135, 148, 0.14);
+	}
+
+	.adh-chip.is-good .adh-dot {
+		background: #2c9b4b;
+		box-shadow: 0 0 0 5px rgba(44, 155, 75, 0.16);
+	}
+
+	.adh-chip.is-bad .adh-dot {
+		background: #d1495b;
+		box-shadow: 0 0 0 5px rgba(209, 73, 91, 0.16);
+	}
+
+	.adh-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 10px;
+	}
+
+	.adh-action {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 136px;
+		padding: 10px 14px;
+		border-radius: 14px;
+		border: 1px solid rgba(44, 82, 106, 0.14);
+		background: rgba(255, 255, 255, 0.68);
+		color: inherit;
+		font-weight: 600;
+		text-decoration: none;
+		transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+	}
+
+	.adh-action:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 10px 22px rgba(18, 39, 46, 0.10);
+		border-color: rgba(45, 110, 110, 0.28);
+	}
+
+	.adh-action.is-disabled {
+		opacity: 0.45;
+		pointer-events: none;
+	}
+
+	.adh-grid {
+		display: grid;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+		gap: 12px;
+	}
+
+	.adh-card {
+		padding: 16px;
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.64);
+		border: 1px solid rgba(44, 82, 106, 0.10);
+		backdrop-filter: blur(4px);
+		min-height: 112px;
+	}
+
+	.adh-card-label {
+		display: block;
+		font-size: 12px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		opacity: 0.68;
+	}
+
+	.adh-card-value {
+		display: block;
+		margin-top: 12px;
+		font-size: 1.32rem;
+		font-weight: 700;
+		line-height: 1.3;
+		word-break: break-word;
+	}
+
+	.adh-card-meta {
+		display: block;
+		margin-top: 8px;
+		font-size: 12px;
+		line-height: 1.6;
+		opacity: 0.76;
+		word-break: break-word;
+	}
+
+	.adh-notes {
+		margin-top: 14px;
+		padding: 14px 16px;
+		border-radius: 16px;
+		background: rgba(17, 41, 54, 0.06);
+		line-height: 1.65;
+	}
+
+	@media (max-width: 1280px) {
+		.adh-grid {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+
+	@media (max-width: 900px) {
+		.adh-hero {
+			flex-direction: column;
+		}
+
+		.adh-actions {
+			justify-content: flex-start;
+		}
+
+		.adh-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	@media (max-width: 640px) {
+		.adh-overview {
+			padding: 18px;
+			border-radius: 18px;
+		}
+
+		.adh-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.adh-action {
+			width: 100%;
+		}
+	}
+</style>
+
+<div class="cbi-section adh-overview">
+	<div class="adh-hero">
+		<div>
+			<h2 class="adh-title">AdGuard Home</h2>
+			<p class="adh-subtitle"><%:Free and open source, powerful network-wide ads & trackers blocking DNS server.%></p>
+			<div class="adh-chips">
+				<span id="adh-service-chip" class="adh-chip"><span class="adh-dot"></span><span id="adh-service-chip-label"><%:Collecting data...%></span></span>
+				<span id="adh-redirect-chip" class="adh-chip"><span class="adh-dot"></span><span id="adh-redirect-chip-label"><%:Collecting data...%></span></span>
+				<span id="adh-config-chip" class="adh-chip"><span class="adh-dot"></span><span id="adh-config-chip-label"><%:Collecting data...%></span></span>
+			</div>
+		</div>
+		<div class="adh-actions">
+			<a id="adh-open-console" class="adh-action is-disabled" href="#"><%:Open web console%></a>
+			<a class="adh-action" href="<%=url([[admin]], [[services]], [[AdGuardHome]], [[manual]])%>"><%:Open YAML editor%></a>
+			<a class="adh-action" href="<%=url([[admin]], [[services]], [[AdGuardHome]], [[log]])%>"><%:Open log view%></a>
+		</div>
+	</div>
+
+	<div class="adh-grid">
+		<div class="adh-card">
+			<span class="adh-card-label"><%:Service state%></span>
+			<span id="adh-running" class="adh-card-value"><%:Collecting data...%></span>
+			<span id="adh-running-meta" class="adh-card-meta"></span>
+		</div>
+		<div class="adh-card">
+			<span class="adh-card-label"><%:Core binary%></span>
+			<span id="adh-version" class="adh-card-value">-</span>
+			<span id="adh-binpath" class="adh-card-meta">-</span>
+		</div>
+		<div class="adh-card">
+			<span class="adh-card-label"><%:DNS redirect%></span>
+			<span id="adh-redirect" class="adh-card-value">-</span>
+			<span id="adh-dns-port" class="adh-card-meta">-</span>
+		</div>
+		<div class="adh-card">
+			<span class="adh-card-label"><%:Web console%></span>
+			<span id="adh-http-port" class="adh-card-value">-</span>
+			<span id="adh-configpath" class="adh-card-meta">-</span>
+		</div>
+		<div class="adh-card">
+			<span class="adh-card-label"><%:Workspace%></span>
+			<span id="adh-workdir" class="adh-card-value">-</span>
+			<span id="adh-logfile" class="adh-card-meta">-</span>
+		</div>
+	</div>
+
+	<div id="adh-notes" class="adh-notes"><em><%:Collecting data...%></em></div>
+</div>
+
+<script type="text/javascript">//<![CDATA[
+(function() {
+	var strings = {
+		running: '<%:RUNNING%>',
+		stopped: '<%:NOT RUNNING%>',
+		enabled: '<%:Enabled%>',
+		disabled: '<%:Disabled%>',
+		redirected: '<%:Redirected%>',
+		notRedirect: '<%:Not redirect%>',
+		ready: '<%:Ready%>',
+		missing: '<%:Missing%>',
+		unknown: '<%:unknown%>',
+		pendingConfig: '<%:Pending YAML changes%>',
+		updateRunning: '<%:Update task running%>',
+		verboseEnabled: '<%:Verbose log enabled%>',
+		waitOnBoot: '<%:Wait network then restart on boot%>',
+		logDisabled: '<%:No runtime log configured%>',
+		logSyslog: '<%:Log output: syslog%>',
+		logFile: '<%:Log file%>',
+		configFile: '<%:Config file%>',
+		currentDnsPort: '<%:Current DNS listen port%>',
+		managementPort: '<%:Management port%>',
+		redirectMode: '<%:Redirect mode%>',
+		coreMissing: '<%:Core binary missing%>',
+		configMissing: '<%:Config file missing%>',
+		workdirMissing: '<%:Workspace missing%>'
+	};
+
+	function setText(id, value) {
+		var node = document.getElementById(id);
+		if (node)
+			node.textContent = value;
+	}
+
+	function setChip(id, labelId, label, tone) {
+		var node = document.getElementById(id);
+		var labelNode = document.getElementById(labelId);
+		if (!node || !labelNode)
+			return;
+
+		node.className = 'adh-chip' + (tone ? ' ' + tone : '');
+		labelNode.textContent = label;
+	}
+
+	function setActionState(node, enabled, href) {
+		if (!node)
+			return;
+
+		node.href = enabled ? href : '#';
+		node.className = enabled ? 'adh-action' : 'adh-action is-disabled';
+	}
+
+	function joinNotes(items) {
+		var notes = [];
+		for (var i = 0; i < items.length; i++)
+			if (items[i])
+				notes.push(items[i]);
+
+		return notes.length ? notes.join(' · ') : strings.ready;
+	}
+
+	function render(data) {
+		if (!data)
+			return;
+
+		var serviceLabel = data.running ? strings.running : strings.stopped;
+		var serviceTone = data.running ? 'is-good' : 'is-bad';
+		var redirectLabel = data.redirect ? strings.redirected : strings.notRedirect;
+		var redirectTone = data.redirect ? 'is-good' : 'is-bad';
+		var configReady = !!(data.core_ready && data.config_ready);
+		var configTone = configReady ? 'is-good' : 'is-bad';
+		var configLabel = configReady ? strings.ready : strings.missing;
+
+		setChip('adh-service-chip', 'adh-service-chip-label', serviceLabel, serviceTone);
+		setChip('adh-redirect-chip', 'adh-redirect-chip-label', redirectLabel, redirectTone);
+		setChip('adh-config-chip', 'adh-config-chip-label', configLabel, configTone);
+
+		setText('adh-running', serviceLabel);
+		setText('adh-running-meta', (data.enabled ? strings.enabled : strings.disabled) + ' · ' + (data.waitonboot ? strings.waitOnBoot : ''));
+		setText('adh-version', data.version || strings.unknown);
+		setText('adh-binpath', data.binpath || '-');
+		setText('adh-redirect', redirectLabel);
+		setText('adh-dns-port', strings.redirectMode + ': ' + (data.redirect_mode || 'none') + ' · ' + strings.currentDnsPort + ': ' + (data.dns_port || '?'));
+		setText('adh-http-port', strings.managementPort + ': ' + (data.httpport || '?'));
+		setText('adh-configpath', strings.configFile + ': ' + (data.configpath || '-'));
+		setText('adh-workdir', data.workdir || '-');
+		if (!data.logfile)
+			setText('adh-logfile', strings.logDisabled);
+		else if (data.logfile === 'syslog')
+			setText('adh-logfile', strings.logSyslog);
+		else
+			setText('adh-logfile', strings.logFile + ': ' + data.logfile);
+
+		setActionState(
+			document.getElementById('adh-open-console'),
+			!!data.httpport,
+			window.location.protocol + '//' + window.location.hostname + ':' + data.httpport + '/'
+		);
+
+		setText('adh-notes', joinNotes([
+			!data.core_ready ? strings.coreMissing : '',
+			!data.config_ready ? strings.configMissing : '',
+			!data.workdir_ready ? strings.workdirMissing : '',
+			data.config_dirty ? strings.pendingConfig : '',
+			data.update_running ? strings.updateRunning : '',
+			data.verbose ? strings.verboseEnabled : ''
+		]));
+	}
+
+	XHR.poll(3, '<%=url([[admin]], [[services]], [[AdGuardHome]], [[status]])%>', null, function(x, data) {
+		render(data);
+	});
+})();
+//]]>
+</script>
