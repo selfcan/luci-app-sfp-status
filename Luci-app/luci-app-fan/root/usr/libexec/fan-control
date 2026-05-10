@@ -9,6 +9,8 @@ shift
 SMART_MIN_MILLI=30000
 SMART_MAX_MILLI=60000
 SMART_MAX_RPM=3000
+SMART_MAX_RPM_MIN=500
+SMART_MAX_RPM_MAX=10000
 
 ensure_cache_dir() {
     mkdir -p "${SAVE%/*}"
@@ -61,7 +63,7 @@ percent_to_raw() {
 }
 
 estimate_rpm_from_raw() {
-    awk -v raw="$1" -v max_rpm="$SMART_MAX_RPM" 'BEGIN {
+    awk -v raw="$1" -v max_rpm="${2:-$SMART_MAX_RPM}" 'BEGIN {
         if (raw == "" || raw < 0)
             raw = 0
         if (raw > 255)
@@ -113,6 +115,12 @@ resolve_smart_window_milli() {
 
     SMART_WINDOW_ON_MILLI=$on_milli
     SMART_WINDOW_OFF_MILLI=$off_milli
+}
+
+resolve_max_rpm() {
+    max_rpm=$(read_uci_uint max_rpm) || max_rpm=$SMART_MAX_RPM
+    max_rpm=$(clamp_uint "$max_rpm" "$SMART_MAX_RPM_MIN" "$SMART_MAX_RPM_MAX")
+    EFFECTIVE_MAX_RPM=$max_rpm
 }
 
 read_uci_mode() {
@@ -630,8 +638,17 @@ print_smart_map() {
     temp_milli=$1
     min_milli=${2:-$SMART_MIN_MILLI}
     max_milli=${3:-$SMART_MAX_MILLI}
+    max_rpm=$4
+
+    if ! is_uint "$max_rpm"; then
+        resolve_max_rpm
+        max_rpm=$EFFECTIVE_MAX_RPM
+    else
+        max_rpm=$(clamp_uint "$max_rpm" "$SMART_MAX_RPM_MIN" "$SMART_MAX_RPM_MAX")
+    fi
+
     raw=$(smart_pwm_raw "$temp_milli" "$min_milli" "$max_milli") || return 1
-    rpm=$(estimate_rpm_from_raw "$raw") || return 1
+    rpm=$(estimate_rpm_from_raw "$raw" "$max_rpm") || return 1
     printf '%s %s\n' "$raw" "$rpm"
 }
 
@@ -654,7 +671,7 @@ usage() {
     echo '      temp                    Get current thermal temp and fan start temp'
     echo '      pwm-status              Get detected PWM runtime info'
     echo '      pwm-set RAW             Set PWM duty cycle (0-255)'
-    echo '      smart-map TEMP [MIN [MAX]]  Print raw PWM and estimated RPM for a temperature in milli-Celsius'
+    echo '      smart-map TEMP [MIN [MAX [RPM]]]  Print raw PWM and estimated RPM for a temperature in milli-Celsius'
     echo '      apply                   Apply the current UCI profile once'
     echo '      disable                 Stop PWM output if supported'
     echo '      daemon                  Run the smart/manual/turbo control loop'
@@ -678,7 +695,7 @@ case "$ACTION" in
         set_pwm_raw "$1"
     ;;
     smart-map)
-        print_smart_map "$1" "$2" "$3"
+        print_smart_map "$1" "$2" "$3" "$4"
     ;;
     apply)
         apply_current_config

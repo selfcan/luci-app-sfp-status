@@ -74,11 +74,11 @@ msgstr "智能"
 msgid "Manual"
 msgstr "手动"
 
-msgid "Turbo mode locks the fan at the 3000 RPM equivalent ceiling after Save & Apply."
-msgstr "狂暴模式在“保存并应用”后会把风扇锁定在约 3000 RPM 的满速等效上限。"
+msgid "Turbo mode locks the fan at the configured full-speed RPM ceiling after Save & Apply."
+msgstr "狂暴模式在“保存并应用”后会把风扇锁定在已配置的满速转速上限。"
 
-msgid "Smart mode linearly ramps from the stop temperature to the full-speed temperature ceiling, with a maximum fan speed of 3000 RPM."
-msgstr "智能模式会在停转温度到满速温度之间线性调速，风扇最大转速上限为 3000 RPM。"
+msgid "Smart mode linearly ramps from the stop temperature to the configured full-speed RPM ceiling."
+msgstr "智能模式会在停转温度到满速温度之间线性调速，并遵循已配置的满速转速上限。"
 
 msgid "Manual mode applies the selected duty target after Save & Apply and reports the available fan speed feedback."
 msgstr "手动模式会在“保存并应用”后采用所选占空比，并显示当前可用的风扇转速反馈。"
@@ -185,8 +185,8 @@ msgstr "基本设置"
 msgid "Enable fan service"
 msgstr "启用风扇服务"
 
-msgid "Start the fan daemon on Save & Apply. Smart mode uses the configured temperature window, Turbo holds the 3000 RPM ceiling, and Manual applies the slider target on pwm-fan capable boards."
-msgstr "点击“保存并应用”后会启动风扇守护进程。智能模式会按已配置的温度区间调速，狂暴模式固定在 3000 RPM 的满速上限，手动模式会在支持 pwm-fan 的设备上应用滑条目标。"
+msgid "Start the fan daemon on Save & Apply. Smart mode uses the configured temperature window, Turbo holds the configured RPM ceiling, and Manual applies the slider target on pwm-fan capable boards."
+msgstr "点击“保存并应用”后会启动风扇守护进程。智能模式会按已配置的温度区间调速，狂暴模式固定在已配置的满速转速上限，手动模式会在支持 pwm-fan 的设备上应用滑条目标。"
 
 msgid "Smart mode follows the configured stop and full-speed temperatures. Turbo and Manual require pwm-fan hwmon support on the target board."
 msgstr "智能模式会按已配置的停转温度和满速温度调速。狂暴模式和手动模式需要目标设备提供 pwm-fan hwmon 支持。"
@@ -194,14 +194,20 @@ msgstr "智能模式会按已配置的停转温度和满速温度调速。狂暴
 msgid "Temperature in C below which the smart profile stops the fan. You can customize when the fan starts to stay off."
 msgstr "智能模式下低于该温度时风扇停转，可自定义风扇开始保持关闭的温度。"
 
-msgid "Temperature in C at which smart mode reaches the 3000 RPM ceiling."
-msgstr "智能模式下达到该温度时会拉到 3000 RPM 满速上限。"
+msgid "Temperature in C at which smart mode reaches the configured RPM ceiling."
+msgstr "智能模式下达到该温度时会拉到已配置的满速转速上限。"
+
+msgid "Maximum fan RPM"
+msgstr "风扇最大转速"
+
+msgid "Display and estimation ceiling for fan speed. Set values such as 2500, 3000 or 3500 to match your hardware."
+msgstr "风扇转速的显示和估算上限。可设置为 2500、3000 或 3500 等数值，以匹配你的风扇。"
 
 msgid "Manual PWM target"
 msgstr "手动 PWM 目标"
 
-msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the displayed ceiling around 3000 RPM."
-msgstr "手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，对应页面显示中约 3000 RPM 的上限。"
+msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the configured RPM ceiling in the display."
+msgstr "手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，对应页面显示中已配置的转速上限。"
 
 msgid "Polling interval"
 msgstr "轮询间隔"

@@ -130,8 +130,8 @@ var texts = {
 	turbo: t('Turbo', '狂暴'),
 	smart: t('Smart', '智能'),
 	manual: t('Manual', '手动'),
-	turboHint: t('Turbo mode locks the fan at the 3000 RPM equivalent ceiling after Save & Apply.', '狂暴模式在“保存并应用”后会把风扇锁定在约 3000 RPM 的满速等效上限。'),
-	smartHint: t('Smart mode linearly ramps from the stop temperature to the full-speed temperature ceiling, with a maximum fan speed of 3000 RPM.', '智能模式会在停转温度到满速温度之间线性调速，风扇最大转速上限为 3000 RPM。'),
+	turboHint: t('Turbo mode locks the fan at the configured full-speed RPM ceiling after Save & Apply.', '狂暴模式在“保存并应用”后会把风扇锁定在已配置的满速转速上限。'),
+	smartHint: t('Smart mode linearly ramps from the stop temperature to the configured full-speed RPM ceiling.', '智能模式会在停转温度到满速温度之间线性调速，并遵循已配置的满速转速上限。'),
 	manualHint: t('Manual mode applies the selected duty target after Save & Apply and reports the available fan speed feedback.', '手动模式会在“保存并应用”后采用所选占空比，并显示当前可用的风扇转速反馈。'),
 	modePending: t('Mode target', '目标模式'),
 	currentDuty: t('Current fan duty', '当前风扇占空比'),
@@ -292,19 +292,29 @@ return view.extend({
 		return Math.round(value) + '%';
 	},
 
-	clampRpm: function(value) {
+	resolveMaxRpm: function(value) {
+		var resolved = toNumber(value);
+
+		if (resolved === null && this.runtime && this.runtime.fan_max_rpm != null)
+			resolved = this.runtime.fan_max_rpm;
+		if (resolved === null)
+			resolved = 3000;
+
+		return clamp(Math.round(resolved), 500, 10000);
+	},
+
+	clampRpm: function(value, maxRpm) {
 		if (value === null || typeof value === 'undefined' || isNaN(value))
 			return null;
 
-		var maxRpm = this.runtime && this.runtime.fan_max_rpm != null ? this.runtime.fan_max_rpm : 3000;
-		return clamp(Math.round(value), 0, maxRpm);
+		return clamp(Math.round(value), 0, this.resolveMaxRpm(maxRpm));
 	},
 
-	estimateRpmFromPercent: function(value) {
+	estimateRpmFromPercent: function(value, maxRpm) {
 		var percent = clamp(toNumber(value) || 0, 0, 100);
-		var maxRpm = this.runtime && this.runtime.fan_max_rpm != null ? this.runtime.fan_max_rpm : 3000;
+		var resolvedMaxRpm = this.resolveMaxRpm(maxRpm);
 
-		return Math.round((percent * maxRpm) / 100);
+		return Math.round((percent * resolvedMaxRpm) / 100);
 	},
 
 	formatRpm: function(value, source) {
@@ -357,6 +367,7 @@ return view.extend({
 			enabled: this.fields.enabled ? !!this.fields.enabled.checked : !!(this.runtime && this.runtime.enabled),
 			mode: this.fields.mode ? this.fields.mode.value : (this.runtime ? this.runtime.mode : 'smart'),
 			manual_pwm: this.readPreviewNumber(this.fields.manual, this.runtime ? this.runtime.manual_pwm : 70),
+			max_rpm: this.readPreviewNumber(this.fields.maxRpm, this.runtime ? this.runtime.fan_max_rpm : 3000),
 			on: this.readPreviewNumber(this.fields.on, smartWindow.on),
 			off: this.readPreviewNumber(this.fields.off, smartWindow.off)
 		};
@@ -373,6 +384,9 @@ return view.extend({
 			return true;
 
 		if (preview.mode !== this.runtime.mode)
+			return true;
+
+		if (this.resolveMaxRpm(preview.max_rpm) !== this.resolveMaxRpm())
 			return true;
 
 		if (preview.mode === 'smart') {
@@ -397,6 +411,7 @@ return view.extend({
 		var runtimePercent = this.runtime && this.runtime.pwm_percent != null ? Math.round(this.runtime.pwm_percent) : null;
 		var runtimeRpm = this.runtime && this.runtime.fan_rpm != null ? this.runtime.fan_rpm : null;
 		var thermalType = this.runtime && this.runtime.thermal_type ? this.runtime.thermal_type : '--';
+		var maxRpm = this.resolveMaxRpm(preview.max_rpm);
 
 		if (!preview.enabled)
 			plannedPercent = 0;
@@ -410,8 +425,9 @@ return view.extend({
 		return {
 			dirty: dirty,
 			demand: demand,
+			maxRpm: maxRpm,
 			dutyPercent: dirty ? plannedPercent : (runtimePercent !== null ? runtimePercent : plannedPercent),
-			fanRpm: this.clampRpm(dirty ? this.estimateRpmFromPercent(plannedPercent) : (runtimeRpm !== null ? runtimeRpm : this.estimateRpmFromPercent(plannedPercent))),
+			fanRpm: this.clampRpm(dirty ? this.estimateRpmFromPercent(plannedPercent, maxRpm) : (runtimeRpm !== null ? runtimeRpm : this.estimateRpmFromPercent(plannedPercent, maxRpm)), maxRpm),
 			rpmSource: dirty ? 'estimated' : (this.runtime ? this.runtime.rpm_source : 'estimated'),
 			caption: this.runtime && this.runtime.zone_temp !== null
 				? (this.modeLabel(preview.mode) + ' / ' + thermalType + (dirty ? ' / ' + texts.modePending : ''))
@@ -522,16 +538,16 @@ return view.extend({
 		var hints = [];
 		var startDelta = (this.runtime && this.runtime.zone_temp !== null && preview.off !== null) ? (preview.off - this.runtime.zone_temp) : null;
 		var ceilingDelta = (this.runtime && this.runtime.zone_temp !== null && preview.on !== null) ? (preview.on - this.runtime.zone_temp) : null;
-		var maxRpm = this.runtime && this.runtime.fan_max_rpm != null ? this.runtime.fan_max_rpm : 3000;
+		var maxRpm = this.resolveMaxRpm(preview.max_rpm);
 
 		if (!this.runtime || !this.runtime.supported) {
 			hints.push((this.runtime && this.runtime.error) || texts.unsupportedHint);
 		} else if (!preview.enabled) {
 			hints.push(texts.enableAndSave);
 		} else if (preview.mode === 'turbo') {
-			hints.push(texts.turboHint);
+			hints.push(texts.turboHint + ' ' + maxRpm + ' RPM.');
 		} else if (preview.mode === 'manual') {
-			hints.push(texts.manualHint + ' ' + texts.modePending + ': ' + this.formatPercent(preview.manual_pwm) + '.');
+			hints.push(texts.manualHint + ' ' + texts.modePending + ': ' + this.formatPercent(preview.manual_pwm) + ' / ' + maxRpm + ' RPM.');
 		} else {
 			hints.push(texts.smartHint);
 			hints.push(texts.smartFloor + ': ' + this.formatTemp(preview.off) + ' / ' + texts.smartCeiling + ': ' + this.formatTemp(preview.on) + ' / ' + maxRpm + ' RPM');
@@ -639,6 +655,7 @@ return view.extend({
 			enabled: this.mapNode.querySelector('[data-name="enabled"] input[type="checkbox"]'),
 			mode: this.mapNode.querySelector('[data-name="mode"] select'),
 			manual: this.mapNode.querySelector('[data-name="manual_pwm"] input'),
+			maxRpm: this.mapNode.querySelector('[data-name="max_rpm"] input'),
 			off: this.mapNode.querySelector('[data-name="off_temp"] input'),
 			on: this.mapNode.querySelector('[data-name="on_temp"] input')
 		};
@@ -676,12 +693,21 @@ return view.extend({
 			this.fields.on.step = '0.1';
 		}
 
+		if (this.fields.maxRpm) {
+			this.fields.maxRpm.type = 'number';
+			this.fields.maxRpm.min = '500';
+			this.fields.maxRpm.max = '10000';
+			this.fields.maxRpm.step = '100';
+		}
+
 		if (this.fields.enabled)
 			this.fields.enabled.addEventListener('change', this.scheduleSyncFormState.bind(this));
 		if (this.fields.mode)
 			this.fields.mode.addEventListener('change', this.scheduleSyncFormState.bind(this));
 		if (this.fields.manual)
 			this.fields.manual.addEventListener('input', this.scheduleSyncFormState.bind(this));
+		if (this.fields.maxRpm)
+			this.fields.maxRpm.addEventListener('input', this.scheduleSyncFormState.bind(this));
 		if (this.fields.off)
 			this.fields.off.addEventListener('input', this.scheduleSyncFormState.bind(this));
 		if (this.fields.on)
@@ -765,7 +791,7 @@ return view.extend({
 	deriveAnimationSpeed: function(preview, demand) {
 		var display = this.runtime ? this.buildDisplayState(preview) : null;
 		var rpm = display ? display.fanRpm : null;
-		var maxRpm = this.runtime && this.runtime.fan_max_rpm != null ? this.runtime.fan_max_rpm : 3000;
+		var maxRpm = display ? display.maxRpm : this.resolveMaxRpm();
 
 		if (rpm !== null) {
 			if (rpm <= 0)
@@ -1013,7 +1039,7 @@ return view.extend({
 		o = s.option(form.Flag, 'enabled', t('Enable fan service', '启用风扇服务'));
 		o.rmempty = false;
 		o.default = '0';
-		o.description = t('Start the fan daemon on Save & Apply. Smart mode uses the configured temperature window, Turbo holds the 3000 RPM ceiling, and Manual applies the slider target on pwm-fan capable boards.', '点击“保存并应用”后会启动风扇守护进程。智能模式会按已配置的温度区间调速，狂暴模式固定在 3000 RPM 的满速上限，手动模式会在支持 pwm-fan 的设备上应用滑条目标。');
+		o.description = t('Start the fan daemon on Save & Apply. Smart mode uses the configured temperature window, Turbo holds the configured RPM ceiling, and Manual applies the slider target on pwm-fan capable boards.', '点击“保存并应用”后会启动风扇守护进程。智能模式会按已配置的温度区间调速，狂暴模式固定在已配置的满速转速上限，手动模式会在支持 pwm-fan 的设备上应用滑条目标。');
 
 		o = s.option(form.ListValue, 'mode', t('Control mode', '控制模式'));
 		o.rmempty = false;
@@ -1034,14 +1060,20 @@ return view.extend({
 		o.datatype = 'ufloat';
 		o.placeholder = String(initialStatus.smart_max_temp != null ? roundTemp(initialStatus.smart_max_temp) : 60);
 		o.default = String(initialStatus.smart_max_temp != null ? roundTemp(initialStatus.smart_max_temp) : 60);
-		o.description = t('Temperature in C at which smart mode reaches the 3000 RPM ceiling.', '智能模式下达到该温度时会拉到 3000 RPM 满速上限。');
+		o.description = t('Temperature in C at which smart mode reaches the configured RPM ceiling.', '智能模式下达到该温度时会拉到已配置的满速转速上限。');
 		o.depends('mode', 'smart');
+
+		o = s.option(form.Value, 'max_rpm', t('Maximum fan RPM', '风扇最大转速'));
+		o.datatype = 'and(uinteger,min(500),max(10000))';
+		o.placeholder = String(initialStatus.fan_max_rpm != null ? Math.round(initialStatus.fan_max_rpm) : 3000);
+		o.default = String(initialStatus.fan_max_rpm != null ? Math.round(initialStatus.fan_max_rpm) : 3000);
+		o.description = t('Display and estimation ceiling for fan speed. Set values such as 2500, 3000 or 3500 to match your hardware.', '风扇转速的显示和估算上限。可设置为 2500、3000 或 3500 等数值，以匹配你的风扇。');
 
 		o = s.option(form.Value, 'manual_pwm', t('Manual PWM target', '手动 PWM 目标'));
 		o.datatype = 'and(uinteger,min(0),max(100))';
 		o.placeholder = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
 		o.default = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
-		o.description = t('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the displayed ceiling around 3000 RPM.', '手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，对应页面显示中约 3000 RPM 的上限。');
+		o.description = t('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the configured RPM ceiling in the display.', '手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，对应页面显示中已配置的转速上限。');
 		o.depends('mode', 'manual');
 
 		o = s.option(form.Value, 'poll_interval', t('Polling interval', '轮询间隔'));

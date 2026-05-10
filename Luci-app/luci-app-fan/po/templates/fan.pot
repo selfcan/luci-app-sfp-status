@@ -71,10 +71,10 @@ msgstr ""
 msgid "Manual"
 msgstr ""
 
-msgid "Turbo mode locks the fan at the 3000 RPM equivalent ceiling after Save & Apply."
+msgid "Turbo mode locks the fan at the configured full-speed RPM ceiling after Save & Apply."
 msgstr ""
 
-msgid "Smart mode linearly ramps from the stop temperature to the full-speed temperature ceiling, with a maximum fan speed of 3000 RPM."
+msgid "Smart mode linearly ramps from the stop temperature to the configured full-speed RPM ceiling."
 msgstr ""
 
 msgid "Manual mode applies the selected duty target after Save & Apply and reports the available fan speed feedback."
@@ -182,7 +182,7 @@ msgstr ""
 msgid "Enable fan service"
 msgstr ""
 
-msgid "Start the fan daemon on Save & Apply. Smart mode uses the configured temperature window, Turbo holds the 3000 RPM ceiling, and Manual applies the slider target on pwm-fan capable boards."
+msgid "Start the fan daemon on Save & Apply. Smart mode uses the configured temperature window, Turbo holds the configured RPM ceiling, and Manual applies the slider target on pwm-fan capable boards."
 msgstr ""
 
 msgid "Smart mode follows the configured stop and full-speed temperatures. Turbo and Manual require pwm-fan hwmon support on the target board."
@@ -191,13 +191,19 @@ msgstr ""
 msgid "Temperature in C below which the smart profile stops the fan. You can customize when the fan starts to stay off."
 msgstr ""
 
-msgid "Temperature in C at which smart mode reaches the 3000 RPM ceiling."
+msgid "Temperature in C at which smart mode reaches the configured RPM ceiling."
+msgstr ""
+
+msgid "Maximum fan RPM"
+msgstr ""
+
+msgid "Display and estimation ceiling for fan speed. Set values such as 2500, 3000 or 3500 to match your hardware."
 msgstr ""
 
 msgid "Manual PWM target"
 msgstr ""
 
-msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the displayed ceiling around 3000 RPM."
+msgid "Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to the configured RPM ceiling in the display."
 msgstr ""
 
 msgid "Polling interval"

@@ -8,6 +8,7 @@ fi
 
 uci -q get 'luci-fan.@luci-fan[0].mode' >/dev/null 2>&1 || uci -q set 'luci-fan.@luci-fan[0].mode=smart'
 uci -q get 'luci-fan.@luci-fan[0].manual_pwm' >/dev/null 2>&1 || uci -q set 'luci-fan.@luci-fan[0].manual_pwm=70'
+uci -q get 'luci-fan.@luci-fan[0].max_rpm' >/dev/null 2>&1 || uci -q set 'luci-fan.@luci-fan[0].max_rpm=3000'
 current_on=$(uci -q get 'luci-fan.@luci-fan[0].on_temp' 2>/dev/null)
 current_off=$(uci -q get 'luci-fan.@luci-fan[0].off_temp' 2>/dev/null)
 

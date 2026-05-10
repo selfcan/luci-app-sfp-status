@@ -7,6 +7,8 @@ SYSINFO_DIR="${IPKG_INSTROOT}/tmp/sysinfo"
 SMART_MIN_MILLI=30000
 SMART_MAX_MILLI=60000
 SMART_MAX_RPM=3000
+SMART_MAX_RPM_MIN=500
+SMART_MAX_RPM_MAX=10000
 
 is_uint() {
 	case "$1" in
@@ -152,7 +154,7 @@ percent_to_raw() {
 }
 
 estimate_rpm_from_raw() {
-	awk -v raw="$1" -v max_rpm="$SMART_MAX_RPM" 'BEGIN {
+	awk -v raw="$1" -v max_rpm="${2:-$SMART_MAX_RPM}" 'BEGIN {
 		if (raw == "" || raw < 0)
 			raw = 0
 		else if (raw > 255)
@@ -163,11 +165,21 @@ estimate_rpm_from_raw() {
 
 clamp_rpm() {
 	local value
+	local max_rpm
 
 	value=$1
+	max_rpm=${2:-$SMART_MAX_RPM}
 	is_uint "$value" || return 1
-	[ "$value" -gt "$SMART_MAX_RPM" ] && value=$SMART_MAX_RPM
+	[ "$value" -gt "$max_rpm" ] && value=$max_rpm
 	printf '%s\n' "$value"
+}
+
+resolve_max_rpm() {
+	local max_rpm
+
+	max_rpm=$(get_uci_temp max_rpm) || max_rpm=$SMART_MAX_RPM
+	max_rpm=$(clamp_uint "$max_rpm" "$SMART_MAX_RPM_MIN" "$SMART_MAX_RPM_MAX")
+	CONFIGURED_MAX_RPM=$max_rpm
 }
 
 smart_pwm_raw() {
@@ -427,7 +439,7 @@ json_add_empty_runtime() {
 get_status() {
 	local zone_path primary_zone_path
 	local fan_on_temp zone_temp fan_off_temp next_trip_temp thermal_type headroom start_delta load_ratio
-	local configured_on_milli configured_off_milli state
+	local configured_on_milli configured_off_milli configured_max_rpm state
 	local thermal_supported pwm_supported mode_supported runtime_error supported trip_point_value trip_supported
 	local actual_fan_rpm estimated_fan_rpm display_fan_rpm rpm_source target_raw
 
@@ -472,8 +484,10 @@ get_status() {
 	fi
 
 	resolve_smart_window_milli
+	resolve_max_rpm
 	configured_on_milli=$SMART_WINDOW_ON_MILLI
 	configured_off_milli=$SMART_WINDOW_OFF_MILLI
+	configured_max_rpm=$CONFIGURED_MAX_RPM
 	fan_off_temp=$configured_off_milli
 	fan_on_temp=$configured_on_milli
 	next_trip_temp=$configured_on_milli
@@ -503,13 +517,13 @@ get_status() {
 
 	if [ "$pwm_supported" = '1' ]; then
 		if is_uint "$PWM_RPM"; then
-			actual_fan_rpm=$(clamp_rpm "$PWM_RPM")
+			actual_fan_rpm=$(clamp_rpm "$PWM_RPM" "$configured_max_rpm")
 			display_fan_rpm=$actual_fan_rpm
 			rpm_source='actual'
 		fi
 
 		if is_uint "$PWM_RAW"; then
-			estimated_fan_rpm=$(estimate_rpm_from_raw "$PWM_RAW")
+			estimated_fan_rpm=$(estimate_rpm_from_raw "$PWM_RAW" "$configured_max_rpm")
 		elif [ "$ENABLED" = '1' ]; then
 			case "$MODE" in
 				turbo)
@@ -526,12 +540,12 @@ get_status() {
 			esac
 
 			if is_uint "$target_raw"; then
-				estimated_fan_rpm=$(estimate_rpm_from_raw "$target_raw")
+				estimated_fan_rpm=$(estimate_rpm_from_raw "$target_raw" "$configured_max_rpm")
 			fi
 		fi
 
 		if is_uint "$estimated_fan_rpm"; then
-			estimated_fan_rpm=$(clamp_rpm "$estimated_fan_rpm")
+			estimated_fan_rpm=$(clamp_rpm "$estimated_fan_rpm" "$configured_max_rpm")
 		fi
 
 		if [ -z "$display_fan_rpm" ] && is_uint "$estimated_fan_rpm"; then
@@ -605,7 +619,7 @@ get_status() {
 	json_add_string actual_fan_rpm "$actual_fan_rpm"
 	json_add_string estimated_fan_rpm "$estimated_fan_rpm"
 	json_add_string rpm_source "$rpm_source"
-	json_add_int fan_max_rpm "$SMART_MAX_RPM"
+	json_add_int fan_max_rpm "$configured_max_rpm"
 	json_add_string smart_min_temp "$(milli_to_celsius "$configured_off_milli")"
 	json_add_string smart_max_temp "$(milli_to_celsius "$configured_on_milli")"
 	json_dump
