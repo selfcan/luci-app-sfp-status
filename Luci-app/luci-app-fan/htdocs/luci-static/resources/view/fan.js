@@ -85,6 +85,7 @@ var dashboardStyle = [
 	'.lf-preset-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }',
 	'.lf-preset { min-height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(7, 20, 26, 0.22); color: #ffffff; box-shadow: none; cursor: pointer; transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease; }',
 	'.lf-preset:hover, .lf-preset:focus { transform: translateY(-1px); background: rgba(125, 226, 184, 0.18); border-color: rgba(125, 226, 184, 0.45); }',
+	'.lf-preset.is-active { background: rgba(125, 226, 184, 0.24); border-color: rgba(125, 226, 184, 0.6); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }',
 	'.lf-note, .lf-insights, .lf-config-grid { margin-top: 14px; }',
 	'.lf-insight { margin: 0 0 10px; padding: 10px 12px; border-radius: 14px; background: rgba(7, 20, 26, 0.2); font-size: 13px; line-height: 1.6; color: rgba(238, 246, 239, 0.9); }',
 	'.lf-config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }',
@@ -249,13 +250,14 @@ return view.extend({
 
 	statusPollInterval: function() {
 		var backendInterval = this.runtime && this.runtime.poll_interval != null ? Math.round(this.runtime.poll_interval) : 5;
-		return clamp(backendInterval + 1, 6, 15);
+		return clamp(Math.max(2, backendInterval - 2), 2, 8);
 	},
 
 	degreeUnit: ' ' + String.fromCharCode(176) + 'C',
 	lastTick: 0,
 	rotorAngle: 0,
 	runtimeSignature: null,
+	pendingSyncFrame: null,
 
 	load: function() {
 		return Promise.all([
@@ -285,6 +287,13 @@ return view.extend({
 			return '--';
 
 		return Math.round(value) + '%';
+	},
+
+	estimateRpmFromPercent: function(value) {
+		var percent = clamp(toNumber(value) || 0, 0, 100);
+		var maxRpm = this.runtime && this.runtime.fan_max_rpm != null ? this.runtime.fan_max_rpm : 3000;
+
+		return Math.round((percent * maxRpm) / 100);
 	},
 
 	formatRpm: function(value, source) {
@@ -349,6 +358,54 @@ return view.extend({
 		};
 	},
 
+	isPreviewDirty: function(preview) {
+		var runtimeManual;
+
+		if (!this.runtime)
+			return false;
+
+		if (preview.enabled !== !!this.runtime.enabled)
+			return true;
+
+		if (preview.mode !== this.runtime.mode)
+			return true;
+
+		if (preview.mode !== 'manual')
+			return false;
+
+		runtimeManual = this.runtime.manual_pwm != null ? Math.round(this.runtime.manual_pwm) : 70;
+		return Math.round(preview.manual_pwm || 0) !== runtimeManual;
+	},
+
+	buildDisplayState: function(preview) {
+		var dirty = this.isPreviewDirty(preview);
+		var demand = this.deriveDemand(preview);
+		var plannedPercent;
+		var runtimePercent = this.runtime && this.runtime.pwm_percent != null ? Math.round(this.runtime.pwm_percent) : null;
+		var runtimeRpm = this.runtime && this.runtime.fan_rpm != null ? this.runtime.fan_rpm : null;
+		var thermalType = this.runtime && this.runtime.thermal_type ? this.runtime.thermal_type : '--';
+
+		if (!preview.enabled)
+			plannedPercent = 0;
+		else if (preview.mode === 'turbo')
+			plannedPercent = 100;
+		else if (preview.mode === 'manual' && preview.manual_pwm !== null)
+			plannedPercent = clamp(Math.round(preview.manual_pwm), 0, 100);
+		else
+			plannedPercent = clamp(Math.round(demand * 100), 0, 100);
+
+		return {
+			dirty: dirty,
+			demand: demand,
+			dutyPercent: dirty ? plannedPercent : (runtimePercent !== null ? runtimePercent : plannedPercent),
+			fanRpm: dirty ? this.estimateRpmFromPercent(plannedPercent) : (runtimeRpm !== null ? runtimeRpm : this.estimateRpmFromPercent(plannedPercent)),
+			rpmSource: dirty ? 'estimated' : (this.runtime ? this.runtime.rpm_source : 'estimated'),
+			caption: this.runtime && this.runtime.zone_temp !== null
+				? (this.modeLabel(preview.mode) + ' / ' + thermalType + (dirty ? ' / ' + texts.modePending : ''))
+				: ((this.runtime && this.runtime.error) || texts.unavailable)
+		};
+	},
+
 	deriveDemand: function(preview) {
 		if (!preview.enabled)
 			return 0;
@@ -385,16 +442,18 @@ return view.extend({
 	},
 
 	updateMetricCards: function(preview) {
+		var display = this.buildDisplayState(preview);
+
 		this.setText(this.nodes.metricCpu, this.formatTemp(this.runtime && this.runtime.zone_temp));
-		this.setText(this.nodes.metricFan, this.formatRpm(this.runtime && this.runtime.fan_rpm, this.runtime && this.runtime.rpm_source));
-		this.setText(this.nodes.metricPwm, this.formatPercent(this.runtime && this.runtime.pwm_percent));
+		this.setText(this.nodes.metricFan, this.formatRpm(display.fanRpm, display.rpmSource));
+		this.setText(this.nodes.metricPwm, this.formatPercent(display.dutyPercent));
 		this.setText(this.nodes.metricMode, this.modeLabel(preview.mode));
 		this.setText(this.nodes.configEnabled, preview.enabled ? texts.enabled : texts.disabled);
 		this.setText(this.nodes.configMode, this.modeLabel(preview.mode));
 		this.setText(this.nodes.configManual, this.formatPercent(preview.manual_pwm));
 		this.setText(this.nodes.configOn, this.formatTemp(preview.on));
 		this.setText(this.nodes.configOff, this.formatTemp(preview.off));
-		this.setText(this.nodes.configRpm, this.formatRpm(this.runtime && this.runtime.fan_rpm, this.runtime && this.runtime.rpm_source));
+		this.setText(this.nodes.configRpm, this.formatRpm(display.fanRpm, display.rpmSource));
 	},
 
 	setMarker: function(node, value, minimum, maximum) {
@@ -499,12 +558,24 @@ return view.extend({
 			return;
 
 		var preview = this.getPreview();
+		this.updateRuntimeBadge(preview);
 		this.updateOptionVisibility(preview.mode);
+		this.updatePresetStates(preview.mode);
 		this.updateMetricCards(preview);
 		this.updateLadder(preview);
 		this.updateDemand(preview);
 		this.updateManualOutput(preview);
 		this.renderInsights(preview);
+	},
+
+	scheduleSyncFormState: function() {
+		if (this.pendingSyncFrame !== null)
+			return;
+
+		this.pendingSyncFrame = this.requestFrame(function() {
+			this.pendingSyncFrame = null;
+			this.syncFormState();
+		}.bind(this));
 	},
 
 	pickProfile: function(name) {
@@ -529,7 +600,7 @@ return view.extend({
 			break;
 		}
 
-		this.syncFormState();
+		this.scheduleSyncFormState();
 	},
 
 	setFieldVisible: function(node, visible) {
@@ -544,6 +615,12 @@ return view.extend({
 		var isManual = mode === 'manual';
 
 		this.setFieldVisible(this.fieldRows.manual, isManual);
+	},
+
+	updatePresetStates: function(mode) {
+		Array.prototype.forEach.call(this.root.querySelectorAll('.lf-preset'), function(node) {
+			node.classList.toggle('is-active', node.getAttribute('data-preset') === mode);
+		});
 	},
 
 	bindFields: function() {
@@ -573,11 +650,11 @@ return view.extend({
 		}
 
 		if (this.fields.enabled)
-			this.fields.enabled.addEventListener('change', this.syncFormState.bind(this));
+			this.fields.enabled.addEventListener('change', this.scheduleSyncFormState.bind(this));
 		if (this.fields.mode)
-			this.fields.mode.addEventListener('change', this.syncFormState.bind(this));
+			this.fields.mode.addEventListener('change', this.scheduleSyncFormState.bind(this));
 		if (this.fields.manual)
-			this.fields.manual.addEventListener('input', this.syncFormState.bind(this));
+			this.fields.manual.addEventListener('input', this.scheduleSyncFormState.bind(this));
 
 		Array.prototype.forEach.call(this.root.querySelectorAll('.lf-preset'), function(node) {
 			node.addEventListener('click', function(event) {
@@ -586,6 +663,7 @@ return view.extend({
 		}, this);
 
 		this.updateOptionVisibility(this.fields.mode ? this.fields.mode.value : 'smart');
+		this.updatePresetStates(this.fields.mode ? this.fields.mode.value : 'smart');
 	},
 
 	drawFan: function(demand) {
@@ -836,10 +914,11 @@ return view.extend({
 		};
 	},
 
-	updateRuntimeBadge: function() {
+	updateRuntimeBadge: function(preview) {
 		if (!this.runtime)
 			return;
 
+		var display = preview ? this.buildDisplayState(preview) : null;
 		var state = this.runtime.supported ? (this.runtime.state || 'disabled') : 'unsupported';
 		var label = texts.disabled;
 		var zoneName = this.runtime.zone || '--';
@@ -862,7 +941,7 @@ return view.extend({
 		this.nodes.runtimeBadge.setAttribute('data-state', state);
 		this.setText(this.nodes.runtimeBadge, label);
 		this.setText(this.nodes.tempNumber, this.formatReadout(this.runtime.zone_temp));
-		this.setText(this.nodes.tempCaption, this.runtime.zone_temp !== null ? (this.modeLabel(this.runtime.mode) + ' / ' + thermalType) : (this.runtime.error || texts.unavailable));
+		this.setText(this.nodes.tempCaption, display ? display.caption : (this.runtime.zone_temp !== null ? (this.modeLabel(this.runtime.mode) + ' / ' + thermalType) : (this.runtime.error || texts.unavailable)));
 		this.setText(this.nodes.sourceLabel, sourceText);
 
 		if (!this.runtime.mode_supported && this.runtime.supported)
