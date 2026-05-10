@@ -4,6 +4,9 @@
 
 FAN_CONTROL="${IPKG_INSTROOT}/usr/libexec/fan-control"
 SYSINFO_DIR="${IPKG_INSTROOT}/tmp/sysinfo"
+SMART_MIN_MILLI=30000
+SMART_MAX_MILLI=60000
+SMART_MAX_RPM=3000
 
 is_uint() {
 	case "$1" in
@@ -80,6 +83,45 @@ milli_to_celsius() {
 
 pwm_to_percent() {
 	awk -v raw="$1" 'BEGIN { printf "%d", int((raw * 100 / 255) + 0.5) }'
+}
+
+percent_to_raw() {
+	awk -v value="$1" 'BEGIN {
+		raw = int((value * 255 / 100) + 0.5)
+		if (raw < 0)
+			raw = 0
+		else if (raw > 255)
+			raw = 255
+		printf "%d", raw
+	}'
+}
+
+estimate_rpm_from_raw() {
+	awk -v raw="$1" -v max_rpm="$SMART_MAX_RPM" 'BEGIN {
+		if (raw == "" || raw < 0)
+			raw = 0
+		else if (raw > 255)
+			raw = 255
+		printf "%d", int((raw * max_rpm / 255) + 0.5)
+	}'
+}
+
+smart_pwm_raw() {
+	awk -v temp="$1" -v min_temp="$SMART_MIN_MILLI" -v max_temp="$SMART_MAX_MILLI" 'BEGIN {
+		if (temp <= min_temp)
+			raw = 0
+		else if (temp >= max_temp)
+			raw = 255
+		else
+			raw = int((((temp - min_temp) * 255) / (max_temp - min_temp)) + 0.5)
+
+		if (raw < 0)
+			raw = 0
+		else if (raw > 255)
+			raw = 255
+
+		printf "%d", raw
+	}'
 }
 
 compute_ratio() {
@@ -305,14 +347,20 @@ json_add_empty_runtime() {
 	json_add_string pwm_percent ""
 	json_add_string pwm_enable_mode ""
 	json_add_string fan_rpm ""
+	json_add_string actual_fan_rpm ""
+	json_add_string estimated_fan_rpm ""
+	json_add_string rpm_source "unavailable"
+	json_add_int fan_max_rpm "$SMART_MAX_RPM"
+	json_add_string smart_min_temp ""
+	json_add_string smart_max_temp ""
 }
 
 get_status() {
-	local zone_path next_trip_index primary_zone_path
-	local fan_on_temp zone_temp fan_off_temp next_trip_temp thermal_type hysteresis headroom start_delta load_ratio
-	local effective_on_temp effective_off_temp effective_next_trip effective_hysteresis
-	local configured_on configured_off configured_on_milli configured_off_milli hysteresis_value state
-	local thermal_supported pwm_supported mode_supported runtime_error supported trip_point_value
+	local zone_path primary_zone_path
+	local fan_on_temp zone_temp fan_off_temp next_trip_temp thermal_type headroom start_delta load_ratio
+	local configured_on configured_off configured_on_milli configured_off_milli state
+	local thermal_supported pwm_supported mode_supported runtime_error supported trip_point_value trip_supported
+	local actual_fan_rpm estimated_fan_rpm display_fan_rpm rpm_source target_raw
 
 	load_board_profile
 	ENABLED=$(uci -q get luci-fan.@luci-fan[0].enabled 2>/dev/null)
@@ -322,18 +370,17 @@ get_status() {
 	POLL_INTERVAL=$(get_uci_temp poll_interval) || POLL_INTERVAL=3
 	trip_point_value=0
 	thermal_supported=0
+	trip_supported=0
 	pwm_supported=0
 	runtime_error=''
 
 	json_init
 	json_add_common
 
-	if [ -x "$FAN_CONTROL" ] && resolve_zone_trip; then
-		thermal_supported=1
-	fi
-
 	if resolve_primary_thermal_zone; then
+		thermal_supported=1
 		primary_zone_path="${IPKG_INSTROOT}/sys/class/thermal/$PRIMARY_ZONE"
+		ZONE=$PRIMARY_ZONE
 		zone_temp=$(read_number "$primary_zone_path/temp") || zone_temp=''
 		thermal_type=$PRIMARY_THERMAL_TYPE
 	else
@@ -341,20 +388,23 @@ get_status() {
 		thermal_type=''
 	fi
 
-	if [ "$thermal_supported" = '1' ]; then
-		zone_path="${IPKG_INSTROOT}/sys/class/thermal/$ZONE"
+	if [ -x "$FAN_CONTROL" ] && resolve_zone_trip; then
+		trip_supported=1
 		trip_point_value=$TRIP
-		next_trip_index=$((TRIP + 1))
-		fan_on_temp=$(read_number "$zone_path/trip_point_${TRIP}_temp") || fan_on_temp=''
-		hysteresis=$(read_number "$zone_path/trip_point_${TRIP}_hyst") || hysteresis=''
-		next_trip_temp=$(read_number "$zone_path/trip_point_${next_trip_index}_temp") || next_trip_temp=''
-		[ -n "$thermal_type" ] || thermal_type=$(read_trimmed "$zone_path/type") || thermal_type=''
-	else
-		ZONE=$PRIMARY_ZONE
-		fan_on_temp=''
-		hysteresis=''
-		next_trip_temp=''
 	fi
+
+	if [ "$thermal_supported" != '1' ] && [ -n "$ZONE" ]; then
+		zone_path="${IPKG_INSTROOT}/sys/class/thermal/$ZONE"
+		if [ -r "$zone_path/temp" ]; then
+			thermal_supported=1
+			zone_temp=$(read_number "$zone_path/temp") || zone_temp=''
+			thermal_type=$(read_trimmed "$zone_path/type") || thermal_type=''
+		fi
+	fi
+
+	fan_off_temp=$SMART_MIN_MILLI
+	fan_on_temp=$SMART_MAX_MILLI
+	next_trip_temp=$SMART_MAX_MILLI
 
 	if read_pwm_runtime; then
 		pwm_supported=1
@@ -363,7 +413,7 @@ get_status() {
 	mode_supported=0
 	case "$MODE" in
 		smart)
-			if [ "$thermal_supported" = '1' ] || [ "$pwm_supported" = '1' ]; then
+			if { [ "$thermal_supported" = '1' ] && [ "$pwm_supported" = '1' ]; } || [ "$trip_supported" = '1' ]; then
 				mode_supported=1
 			fi
 			;;
@@ -377,39 +427,45 @@ get_status() {
 	configured_on=$(get_uci_temp on_temp) || configured_on=''
 	configured_off=$(get_uci_temp off_temp) || configured_off=''
 
-	configured_on_milli=''
-	configured_off_milli=''
-	[ -n "$configured_on" ] && configured_on_milli=$((configured_on * 1000))
-	[ -n "$configured_off" ] && configured_off_milli=$((configured_off * 1000))
+	configured_on_milli=$SMART_MAX_MILLI
+	configured_off_milli=$SMART_MIN_MILLI
+	actual_fan_rpm=''
+	estimated_fan_rpm=''
+	display_fan_rpm=''
+	rpm_source='unavailable'
 
-	hysteresis_value=0
-	[ -n "$hysteresis" ] && hysteresis_value=$hysteresis
+	if [ "$pwm_supported" = '1' ]; then
+		if is_uint "$PWM_RPM"; then
+			actual_fan_rpm=$PWM_RPM
+			display_fan_rpm=$PWM_RPM
+			rpm_source='actual'
+		fi
 
-	if [ -n "$fan_on_temp" ]; then
-		fan_off_temp=$((fan_on_temp - hysteresis_value))
-	else
-		fan_off_temp=''
-	fi
+		if is_uint "$PWM_RAW"; then
+			estimated_fan_rpm=$(estimate_rpm_from_raw "$PWM_RAW")
+		elif [ "$ENABLED" = '1' ]; then
+			case "$MODE" in
+				turbo)
+					target_raw=255
+					;;
+				manual)
+					target_raw=$(percent_to_raw "$MANUAL_PWM")
+					;;
+				*)
+					if [ -n "$zone_temp" ]; then
+						target_raw=$(smart_pwm_raw "$zone_temp")
+					fi
+					;;
+			esac
 
-	if { [ -z "$hysteresis" ] || [ "$hysteresis" -le 0 ]; } && [ -n "$configured_off_milli" ] && [ -n "$fan_on_temp" ] && [ "$configured_off_milli" -lt "$fan_on_temp" ]; then
-		fan_off_temp=$configured_off_milli
-		hysteresis=$((fan_on_temp - fan_off_temp))
-		hysteresis_value=$hysteresis
-	fi
+			if is_uint "$target_raw"; then
+				estimated_fan_rpm=$(estimate_rpm_from_raw "$target_raw")
+			fi
+		fi
 
-	effective_on_temp=$fan_on_temp
-	effective_off_temp=$fan_off_temp
-	effective_next_trip=$next_trip_temp
-	effective_hysteresis=$hysteresis
-
-	# When smart mode is driven by writable PWM, the actual control thresholds come
-	# from UCI instead of the kernel thermal trip points.
-	if [ "$MODE" = 'smart' ] && [ "$pwm_supported" = '1' ]; then
-		[ -n "$configured_on_milli" ] && effective_on_temp=$configured_on_milli
-		[ -n "$configured_off_milli" ] && effective_off_temp=$configured_off_milli
-
-		if [ -n "$effective_on_temp" ] && [ -n "$effective_off_temp" ] && [ "$effective_on_temp" -gt "$effective_off_temp" ]; then
-			effective_hysteresis=$((effective_on_temp - effective_off_temp))
+		if [ -z "$display_fan_rpm" ] && is_uint "$estimated_fan_rpm"; then
+			display_fan_rpm=$estimated_fan_rpm
+			rpm_source='estimated'
 		fi
 	fi
 
@@ -423,9 +479,9 @@ get_status() {
 			else
 				state='standby'
 			fi
-		elif [ -n "$zone_temp" ] && [ -n "$effective_on_temp" ] && [ "$zone_temp" -ge "$effective_on_temp" ]; then
+		elif [ -n "$zone_temp" ] && [ "$zone_temp" -ge "$SMART_MAX_MILLI" ]; then
 			state='active'
-		elif [ -n "$zone_temp" ] && [ -n "$effective_off_temp" ] && [ "$zone_temp" -gt "$effective_off_temp" ]; then
+		elif [ -n "$zone_temp" ] && [ "$zone_temp" -gt "$SMART_MIN_MILLI" ]; then
 			state='transition'
 		else
 			state='standby'
@@ -433,16 +489,21 @@ get_status() {
 	fi
 
 	headroom=''
-	[ -n "$effective_next_trip" ] && [ -n "$zone_temp" ] && headroom=$((effective_next_trip - zone_temp))
+	[ -n "$zone_temp" ] && headroom=$((SMART_MAX_MILLI - zone_temp))
 	start_delta=''
-	[ -n "$effective_on_temp" ] && [ -n "$zone_temp" ] && start_delta=$((effective_on_temp - zone_temp))
-	load_ratio=$(compute_ratio "$zone_temp" "$effective_off_temp" "$effective_next_trip" "$effective_on_temp")
+	[ -n "$zone_temp" ] && start_delta=$((SMART_MIN_MILLI - zone_temp))
+	load_ratio=$(compute_ratio "$zone_temp" "$SMART_MIN_MILLI" "$SMART_MAX_MILLI" "$SMART_MAX_MILLI")
 	supported=0
-	[ "$thermal_supported" = '1' ] || [ "$pwm_supported" = '1' ] && supported=1
-	[ "$thermal_supported" = '1' ] && supported=1
+	if { [ "$thermal_supported" = '1' ] && [ "$pwm_supported" = '1' ]; } || [ "$trip_supported" = '1' ]; then
+		supported=1
+	fi
 
 	if [ "$supported" != '1' ]; then
-		runtime_error='No pwm-fan hwmon interface or writable active fan trip point was detected.'
+		if [ "$thermal_supported" != '1' ]; then
+			runtime_error='No readable CPU thermal zone was detected.'
+		elif [ "$pwm_supported" != '1' ] && [ "$trip_supported" != '1' ]; then
+			runtime_error='No writable pwm-fan hwmon interface or compatible fallback thermal trip point was detected.'
+		fi
 	fi
 
 	json_add_boolean supported "$supported"
@@ -451,12 +512,12 @@ get_status() {
 	json_add_int trip_point "$trip_point_value"
 	json_add_string thermal_type "$thermal_type"
 	json_add_string zone_temp "$(milli_to_celsius "$zone_temp")"
-	json_add_string fan_on_temp "$(milli_to_celsius "$effective_on_temp")"
-	json_add_string fan_off_temp "$(milli_to_celsius "$effective_off_temp")"
-	json_add_string configured_on_temp "$( [ -n "$configured_on_milli" ] && milli_to_celsius "$configured_on_milli" )"
-	json_add_string configured_off_temp "$( [ -n "$configured_off_milli" ] && milli_to_celsius "$configured_off_milli" )"
-	json_add_string hysteresis "$( [ -n "$effective_hysteresis" ] && milli_to_celsius "$effective_hysteresis" )"
-	json_add_string next_trip_temp "$( [ -n "$effective_next_trip" ] && milli_to_celsius "$effective_next_trip" )"
+	json_add_string fan_on_temp "$(milli_to_celsius "$fan_on_temp")"
+	json_add_string fan_off_temp "$(milli_to_celsius "$fan_off_temp")"
+	json_add_string configured_on_temp "$(milli_to_celsius "$configured_on_milli")"
+	json_add_string configured_off_temp "$(milli_to_celsius "$configured_off_milli")"
+	json_add_string hysteresis ""
+	json_add_string next_trip_temp "$(milli_to_celsius "$next_trip_temp")"
 	json_add_string headroom "$( [ -n "$headroom" ] && milli_to_celsius "$headroom" )"
 	json_add_string start_delta "$(milli_to_celsius "$start_delta")"
 	json_add_string load_ratio "$load_ratio"
@@ -469,7 +530,13 @@ get_status() {
 	json_add_string pwm_raw "$PWM_RAW"
 	json_add_string pwm_percent "$PWM_PERCENT"
 	json_add_string pwm_enable_mode "$PWM_ENABLE"
-	json_add_string fan_rpm "$PWM_RPM"
+	json_add_string fan_rpm "$display_fan_rpm"
+	json_add_string actual_fan_rpm "$actual_fan_rpm"
+	json_add_string estimated_fan_rpm "$estimated_fan_rpm"
+	json_add_string rpm_source "$rpm_source"
+	json_add_int fan_max_rpm "$SMART_MAX_RPM"
+	json_add_string smart_min_temp "$(milli_to_celsius "$SMART_MIN_MILLI")"
+	json_add_string smart_max_temp "$(milli_to_celsius "$SMART_MAX_MILLI")"
 	json_dump
 	json_cleanup
 }

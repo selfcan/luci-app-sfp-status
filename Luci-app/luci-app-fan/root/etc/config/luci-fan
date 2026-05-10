@@ -2,6 +2,6 @@ config luci-fan
     option enabled 0
     option mode smart
     option manual_pwm 70
-    option on_temp 55
-    option off_temp 50
-    option poll_interval 3
+    option on_temp 60
+    option off_temp 30
+    option poll_interval 5

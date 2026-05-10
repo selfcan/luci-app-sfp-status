@@ -114,31 +114,36 @@ var texts = {
 	unsupported: t('Unavailable', '不可用'),
 	unavailable: t('Sensor unavailable', '传感器不可用'),
 	toStart: t('to start', '后启动'),
-	beforeNextTrip: t('before next trip', '距下一触发点还有'),
-	thresholdReached: t('Threshold reached', '已达到阈值'),
-	ceilingHidden: t('Ceiling not exposed', '未提供上限温度'),
-	bpiTip: t('BPI-R4 routers usually benefit from a slightly lower smart start temperature when Wi-Fi or NSS load ramps up quickly.', '对 BPI-R4 来说，在 Wi-Fi 或 NSS 负载快速上升时，适当降低智能启动温度通常会更稳妥。'),
-	hysteresisTip: t('Off temperature should stay at least 3 C below the start threshold for stable smart mode modulation.', '为保证智能调速稳定，停止温度建议至少比启动阈值低 3 摄氏度。'),
-	currentAboveStart: t('Current temperature is already above the smart start threshold. Save carefully to avoid sudden fan jumps.', '当前温度已经高于智能启动阈值，保存时请留意避免风扇突然升速。'),
+	thresholdReached: t('Full-speed ceiling reached', '已达到满速温度上限'),
 	saveApply: t('Save & Apply below to persist changes.', '需要点击下方的“保存并应用”后，修改才会真正生效。'),
 	enableAndSave: t('Enable the service and Save & Apply to start the fan daemon.', '启用服务后，再点击“保存并应用”即可启动风扇守护进程。'),
 	loadedToForm: t('Loaded into the form', '已写入表单'),
 	notAvailable: t('Not available', '不可用'),
-	unsupportedHint: t('This device does not currently expose a writable pwm-fan hwmon interface or an active writable fan trip point.', '当前设备未检测到可写的 PWM 风扇 hwmon 接口，也没有可调整的活动风扇热阈值。'),
-	modeUnsupportedHint: t('Turbo and Manual modes require pwm-fan hwmon support on the target board.', '狂暴模式和手动模式需要目标设备提供 pwm-fan hwmon 支持。'),
+	unsupportedHint: t('This device needs a readable CPU thermal zone and a writable pwm-fan hwmon interface for the full temperature-driven control loop.', '当前设备需要可读的 CPU 温区和可写的 PWM 风扇 hwmon 接口，才能使用完整的温度驱动控速。'),
+	modeUnsupportedHint: t('Turbo and Manual modes require a writable pwm-fan hwmon interface on the target board.', '狂暴模式和手动模式需要目标设备提供可写的 pwm-fan hwmon 接口。'),
 	telemetryWaiting: t('Waiting for telemetry...', '正在等待遥测数据...'),
 	monitoringState: t('Monitoring state', '监控状态'),
 	currentDevice: t('Current device', '当前设备'),
-	bpiHero: t('BPI-R4 tuned layout with live CPU temperature, PWM duty, tachometer feedback and three operating modes.', '已针对 BPI-R4 优化，实时展示 CPU 温度、PWM 占空比、风扇转速反馈和三种控制模式。'),
-	genericHero: t('Live OpenWrt cooling dashboard with smart, manual and turbo profiles when the target hardware exposes pwm-fan telemetry.', '当目标硬件提供 pwm-fan 遥测能力时，可在这里实时查看 OpenWrt 散热状态，并切换智能、手动和狂暴三种模式。'),
+	bpiHero: t('BPI-R4 tuned layout with live CPU temperature, PWM duty, and actual-or-estimated speed feedback across smart, manual and turbo modes.', '已针对 BPI-R4 优化，实时展示 CPU 温度、PWM 占空比，以及智能、手动、狂暴三种模式下的真实或估算转速。'),
+	genericHero: t('Live OpenWrt cooling dashboard with a fixed 30 C to 60 C smart curve, plus manual and turbo profiles on pwm-fan capable hardware.', '当目标硬件提供 pwm-fan 能力时，可在这里实时查看 OpenWrt 散热状态，并使用固定 30 到 60 摄氏度智能曲线、手动和狂暴三种模式。'),
 	turbo: t('Turbo', '狂暴'),
 	smart: t('Smart', '智能'),
 	manual: t('Manual', '手动'),
-	turboHint: t('Turbo mode keeps the fan at maximum duty after Save & Apply.', '狂暴模式在“保存并应用”后会让风扇保持最大占空比。'),
-	smartHint: t('Smart mode follows CPU temperature and ramps the pwm-fan duty automatically.', '智能模式会根据 CPU 温度自动调节 pwm-fan 占空比。'),
-	manualHint: t('Manual mode applies the selected duty target after Save & Apply.', '手动模式会在“保存并应用”后采用所选占空比。'),
+	turboHint: t('Turbo mode locks the fan at the 3000 RPM equivalent ceiling after Save & Apply.', '狂暴模式在“保存并应用”后会把风扇锁定在约 3000 RPM 的满速等效上限。'),
+	smartHint: t('Smart mode uses a fixed 30.0 C to 60.0 C curve: below 30.0 C the fan stops, above 60.0 C it stays at the 3000 RPM equivalent ceiling.', '智能模式使用固定的 30.0 到 60.0 摄氏度曲线：低于 30.0 摄氏度停转，高于 60.0 摄氏度保持约 3000 RPM 的满速等效上限。'),
+	manualHint: t('Manual mode applies the selected duty target after Save & Apply and reports speed from either the hardware sensor or PWM estimation.', '手动模式会在“保存并应用”后采用所选占空比，并优先显示硬件反馈转速，缺失时回退到 PWM 估算转速。'),
 	modePending: t('Mode target', '目标模式'),
-	currentDuty: t('Current fan duty', '当前风扇占空比')
+	currentDuty: t('Current fan duty', '当前风扇占空比'),
+	estimatedTag: t('(estimated)', '（估算）'),
+	actualTag: t('(actual)', '（真实）'),
+	speedSourceEstimated: t('PWM estimated speed feedback', 'PWM 估算转速反馈'),
+	speedSourceActual: t('Hardware speed feedback', '硬件转速反馈'),
+	speedSourceUnavailable: t('Speed feedback unavailable', '转速反馈不可用'),
+	speedFeedback: t('Speed feedback', '转速反馈'),
+	smartFloor: t('Fan stop below', '低于此温度停转'),
+	smartCeiling: t('Full speed above', '高于此温度满速'),
+	curveModulating: t('The fan is linearly modulating between the stop floor and the full-speed ceiling.', '当前风扇正在停转温度和满速温度之间线性调速。'),
+	precisionHint: t('Backend control uses the kernel thermal reading directly, so the smart curve tracks temperature changes at 0.1 C granularity.', '后端直接使用内核热区读数，因此智能曲线按 0.1 摄氏度粒度跟踪温度变化。')
 };
 
 function toNumber(value) {
@@ -214,19 +219,19 @@ function normalizeStatus(data) {
 		pwm_raw: toNumber(data.pwm_raw),
 		pwm_percent: toNumber(data.pwm_percent),
 		pwm_enable_mode: data.pwm_enable_mode || '',
-		fan_rpm: toNumber(data.fan_rpm)
+		fan_rpm: toNumber(data.fan_rpm),
+		actual_fan_rpm: toNumber(data.actual_fan_rpm),
+		estimated_fan_rpm: toNumber(data.estimated_fan_rpm),
+		rpm_source: data.rpm_source || 'unavailable',
+		fan_max_rpm: toNumber(data.fan_max_rpm),
+		smart_min_temp: toNumber(data.smart_min_temp),
+		smart_max_temp: toNumber(data.smart_max_temp)
 	};
 }
 
 function recommendedSmartWindow(status) {
-	var nextTrip = status.next_trip_temp;
-	var baseOn = status.configured_on_temp || status.fan_on_temp || (status.is_bpi_r4 ? 55 : 52);
-	var maxOn = nextTrip !== null ? Math.max(6, Math.floor(nextTrip - 1)) : 85;
-	var on = status.is_bpi_r4 ? Math.max(baseOn, 55) : Math.max(baseOn, 52);
-	var off = on - 5;
-
-	on = clamp(Math.round(on), 6, maxOn);
-	off = clamp(Math.round(off), 5, on - 1);
+	var off = status.smart_min_temp != null ? status.smart_min_temp : 30;
+	var on = status.smart_max_temp != null ? status.smart_max_temp : 60;
 
 	return {
 		on: on,
@@ -242,9 +247,15 @@ return view.extend({
 		return window.setTimeout(function() { callback(Date.now()); }, 33);
 	},
 
+	statusPollInterval: function() {
+		var backendInterval = this.runtime && this.runtime.poll_interval != null ? Math.round(this.runtime.poll_interval) : 5;
+		return clamp(backendInterval + 1, 6, 15);
+	},
+
 	degreeUnit: ' ' + String.fromCharCode(176) + 'C',
 	lastTick: 0,
 	rotorAngle: 0,
+	runtimeSignature: null,
 
 	load: function() {
 		return Promise.all([
@@ -276,11 +287,30 @@ return view.extend({
 		return Math.round(value) + '%';
 	},
 
-	formatRpm: function(value) {
+	formatRpm: function(value, source) {
 		if (value === null || typeof value === 'undefined' || isNaN(value))
 			return texts.notAvailable;
 
-		return Math.round(value) + ' RPM';
+		var suffix = '';
+
+		if (source === 'estimated')
+			suffix = ' ' + texts.estimatedTag;
+		else if (source === 'actual')
+			suffix = ' ' + texts.actualTag;
+
+		return Math.round(value) + ' RPM' + suffix;
+	},
+
+	formatSpeedFeedback: function() {
+		if (!this.runtime)
+			return texts.speedSourceUnavailable;
+
+		if (this.runtime.rpm_source === 'actual')
+			return texts.speedSourceActual;
+		if (this.runtime.rpm_source === 'estimated')
+			return texts.speedSourceEstimated;
+
+		return texts.speedSourceUnavailable;
 	},
 
 	modeLabel: function(mode) {
@@ -308,12 +338,14 @@ return view.extend({
 	},
 
 	getPreview: function() {
+		var smartWindow = recommendedSmartWindow(this.runtime || {});
+
 		return {
 			enabled: this.fields.enabled ? !!this.fields.enabled.checked : !!(this.runtime && this.runtime.enabled),
 			mode: this.fields.mode ? this.fields.mode.value : (this.runtime ? this.runtime.mode : 'smart'),
 			manual_pwm: this.readPreviewNumber(this.fields.manual, this.runtime ? this.runtime.manual_pwm : 70),
-			on: this.readPreviewNumber(this.fields.on, this.runtime ? this.runtime.configured_on_temp || this.runtime.fan_on_temp : null),
-			off: this.readPreviewNumber(this.fields.off, this.runtime ? this.runtime.configured_off_temp || this.runtime.fan_off_temp : null)
+			on: smartWindow.on,
+			off: smartWindow.off
 		};
 	},
 
@@ -343,9 +375,18 @@ return view.extend({
 		return clamp(this.runtime.load_ratio || 0, 0, 1);
 	},
 
+	deriveDemandDisplayRatio: function(demand) {
+		if (demand <= 0)
+			return 0;
+		if (demand >= 1)
+			return 1;
+
+		return clamp(Math.pow(demand, 0.85), 0, 1);
+	},
+
 	updateMetricCards: function(preview) {
 		this.setText(this.nodes.metricCpu, this.formatTemp(this.runtime && this.runtime.zone_temp));
-		this.setText(this.nodes.metricFan, this.formatRpm(this.runtime && this.runtime.fan_rpm));
+		this.setText(this.nodes.metricFan, this.formatRpm(this.runtime && this.runtime.fan_rpm, this.runtime && this.runtime.rpm_source));
 		this.setText(this.nodes.metricPwm, this.formatPercent(this.runtime && this.runtime.pwm_percent));
 		this.setText(this.nodes.metricMode, this.modeLabel(preview.mode));
 		this.setText(this.nodes.configEnabled, preview.enabled ? texts.enabled : texts.disabled);
@@ -353,7 +394,7 @@ return view.extend({
 		this.setText(this.nodes.configManual, this.formatPercent(preview.manual_pwm));
 		this.setText(this.nodes.configOn, this.formatTemp(preview.on));
 		this.setText(this.nodes.configOff, this.formatTemp(preview.off));
-		this.setText(this.nodes.configRpm, this.formatRpm(this.runtime && this.runtime.fan_rpm));
+		this.setText(this.nodes.configRpm, this.formatRpm(this.runtime && this.runtime.fan_rpm, this.runtime && this.runtime.rpm_source));
 	},
 
 	setMarker: function(node, value, minimum, maximum) {
@@ -371,7 +412,6 @@ return view.extend({
 
 	updateLadder: function(preview) {
 		var values = [];
-		var nextTrip = this.runtime ? this.runtime.next_trip_temp : null;
 
 		if (preview.off !== null)
 			values.push(preview.off);
@@ -379,8 +419,6 @@ return view.extend({
 			values.push(this.runtime.zone_temp);
 		if (preview.on !== null)
 			values.push(preview.on);
-		if (nextTrip !== null)
-			values.push(nextTrip);
 
 		if (!values.length)
 			return;
@@ -393,19 +431,20 @@ return view.extend({
 		this.setMarker(this.nodes.markerOff, preview.off, minimum, maximum);
 		this.setMarker(this.nodes.markerCurrent, this.runtime ? this.runtime.zone_temp : null, minimum, maximum);
 		this.setMarker(this.nodes.markerOn, preview.on, minimum, maximum);
-		this.setMarker(this.nodes.markerNext, nextTrip, minimum, maximum);
+		this.setMarker(this.nodes.markerNext, null, minimum, maximum);
 
 		this.setText(this.nodes.scaleOff, this.formatTemp(preview.off));
 		this.setText(this.nodes.scaleCurrent, this.formatTemp(this.runtime && this.runtime.zone_temp));
 		this.setText(this.nodes.scaleOn, this.formatTemp(preview.on));
-		this.setText(this.nodes.scaleNext, nextTrip !== null ? this.formatTemp(nextTrip) : texts.notAvailable);
+		this.setText(this.nodes.scaleNext, this.formatSpeedFeedback());
 	},
 
 	updateDemand: function(preview) {
 		var demand = this.deriveDemand(preview);
+		var displayRatio = this.deriveDemandDisplayRatio(demand);
 		var hue = Math.round(150 - (demand * 120));
 
-		this.nodes.demandFill.style.width = Math.round(demand * 100) + '%';
+		this.nodes.demandFill.style.width = Math.round(displayRatio * 100) + '%';
 		this.nodes.demandFill.style.background = 'linear-gradient(90deg, hsl(148, 60%, 64%) 0%, hsl(42, 88%, 72%) 58%, hsl(' + Math.max(12, hue) + ', 88%, 62%) 100%)';
 		this.setText(this.nodes.demandValue, Math.round(demand * 100) + '%');
 		return demand;
@@ -418,10 +457,11 @@ return view.extend({
 
 	renderInsights: function(preview) {
 		var hints = [];
-		var startDelta = (this.runtime && this.runtime.zone_temp !== null && preview.on !== null) ? (preview.on - this.runtime.zone_temp) : null;
+		var startDelta = (this.runtime && this.runtime.zone_temp !== null && preview.off !== null) ? (preview.off - this.runtime.zone_temp) : null;
+		var ceilingDelta = (this.runtime && this.runtime.zone_temp !== null && preview.on !== null) ? (preview.on - this.runtime.zone_temp) : null;
 
 		if (!this.runtime || !this.runtime.supported) {
-			hints.push(texts.unsupportedHint);
+			hints.push((this.runtime && this.runtime.error) || texts.unsupportedHint);
 		} else if (!preview.enabled) {
 			hints.push(texts.enableAndSave);
 		} else if (preview.mode === 'turbo') {
@@ -431,25 +471,17 @@ return view.extend({
 		} else {
 			hints.push(texts.smartHint);
 
-			if (startDelta !== null) {
-				if (startDelta <= 0)
-					hints.push(texts.thresholdReached);
-				else
-					hints.push(this.formatTemp(startDelta) + ' ' + texts.toStart);
-			}
+			if (startDelta !== null && startDelta > 0)
+				hints.push(this.formatTemp(startDelta) + ' ' + texts.toStart);
+			else if (ceilingDelta !== null && ceilingDelta <= 0)
+				hints.push(texts.thresholdReached);
+			else if (ceilingDelta !== null)
+				hints.push(texts.curveModulating);
 
-			if (preview.on !== null && preview.off !== null && (preview.on - preview.off) < 3)
-				hints.push(texts.hysteresisTip);
-			else if (this.runtime && this.runtime.zone_temp !== null && preview.on !== null && this.runtime.zone_temp >= preview.on)
-				hints.push(texts.currentAboveStart);
-			else if (this.runtime && this.runtime.is_bpi_r4)
-				hints.push(texts.bpiTip);
+			hints.push(texts.precisionHint);
 		}
 
-		if (this.runtime && this.runtime.headroom !== null)
-			hints.push(this.formatTemp(this.runtime.headroom) + ' ' + texts.beforeNextTrip);
-		else
-			hints.push(texts.ceilingHidden);
+		hints.push(texts.speedFeedback + ': ' + this.formatSpeedFeedback());
 
 		if (!this.runtime || !this.runtime.mode_supported)
 			hints.push(texts.modeUnsupportedHint);
@@ -493,11 +525,7 @@ return view.extend({
 			this.setText(this.nodes.presetNote, texts.loadedToForm + ': ' + texts.manual + ' / ' + this.formatPercent(this.readPreviewNumber(this.fields.manual, 70)) + '. ' + texts.saveApply);
 			break;
 		default:
-			if (this.fields.on)
-				this.fields.on.value = String(defaults.on);
-			if (this.fields.off)
-				this.fields.off.value = String(defaults.off);
-			this.setText(this.nodes.presetNote, texts.loadedToForm + ': ' + texts.smart + ' / ' + defaults.on + this.degreeUnit + ' / ' + defaults.off + this.degreeUnit + '. ' + texts.saveApply);
+			this.setText(this.nodes.presetNote, texts.loadedToForm + ': ' + texts.smart + ' / ' + defaults.off.toFixed(1) + this.degreeUnit + ' - ' + defaults.on.toFixed(1) + this.degreeUnit + '. ' + texts.saveApply);
 			break;
 		}
 
@@ -514,11 +542,8 @@ return view.extend({
 
 	updateOptionVisibility: function(mode) {
 		var isManual = mode === 'manual';
-		var isSmart = mode === 'smart';
 
 		this.setFieldVisible(this.fieldRows.manual, isManual);
-		this.setFieldVisible(this.fieldRows.on, isSmart);
-		this.setFieldVisible(this.fieldRows.off, isSmart);
 	},
 
 	bindFields: function() {
@@ -527,14 +552,10 @@ return view.extend({
 		this.fields = {
 			enabled: this.mapNode.querySelector('[data-name="enabled"] input[type="checkbox"]'),
 			mode: this.mapNode.querySelector('[data-name="mode"] select'),
-			manual: this.mapNode.querySelector('[data-name="manual_pwm"] input'),
-			on: this.mapNode.querySelector('[data-name="on_temp"] input'),
-			off: this.mapNode.querySelector('[data-name="off_temp"] input')
+			manual: this.mapNode.querySelector('[data-name="manual_pwm"] input')
 		};
 		this.fieldRows = {
-			manual: this.mapNode.querySelector('[data-name="manual_pwm"]'),
-			on: this.mapNode.querySelector('[data-name="on_temp"]'),
-			off: this.mapNode.querySelector('[data-name="off_temp"]')
+			manual: this.mapNode.querySelector('[data-name="manual_pwm"]')
 		};
 
 		if (this.fields.manual) {
@@ -557,10 +578,6 @@ return view.extend({
 			this.fields.mode.addEventListener('change', this.syncFormState.bind(this));
 		if (this.fields.manual)
 			this.fields.manual.addEventListener('input', this.syncFormState.bind(this));
-		if (this.fields.on)
-			this.fields.on.addEventListener('input', this.syncFormState.bind(this));
-		if (this.fields.off)
-			this.fields.off.addEventListener('input', this.syncFormState.bind(this));
 
 		Array.prototype.forEach.call(this.root.querySelectorAll('.lf-preset'), function(node) {
 			node.addEventListener('click', function(event) {
@@ -637,7 +654,7 @@ return view.extend({
 	},
 
 	deriveAnimationSpeed: function(preview, demand) {
-		var rpm = this.runtime ? this.runtime.fan_rpm : null;
+		var rpm = this.runtime ? (this.runtime.actual_fan_rpm != null ? this.runtime.actual_fan_rpm : this.runtime.estimated_fan_rpm) : null;
 
 		if (rpm !== null) {
 			if (rpm <= 0)
@@ -698,7 +715,6 @@ return view.extend({
 		});
 		var heroText = status.is_bpi_r4 ? texts.bpiHero : texts.genericHero;
 		var primaryChip = escapeHtml(status.model_name || texts.currentDevice);
-		var secondaryChip = status.board_name ? '<span class="lf-chip lf-chip-muted">' + escapeHtml(status.board_name) + '</span>' : '';
 		var sourceText = escapeHtml((status.hwmon_name || '--') + ' / ' + (status.zone || '--'));
 
 		dashboard.innerHTML = '' +
@@ -709,7 +725,6 @@ return view.extend({
 					'<p>' + escapeHtml(heroText) + '</p>' +
 					'<div class="lf-chip-row">' +
 						'<span class="lf-chip">' + primaryChip + '</span>' +
-						secondaryChip +
 						'<span class="lf-chip lf-chip-alert" id="lf-support-chip" style="display:none"></span>' +
 						'<span class="lf-chip lf-runtime-badge" id="lf-runtime-badge" data-state="disabled">' + escapeHtml(texts.monitoringState) + '</span>' +
 					'</div>' +
@@ -740,7 +755,7 @@ return view.extend({
 			'</div>' +
 			'<div class="lf-ladder-card">' +
 				'<div class="lf-ladder-head">' +
-					'<h4>' + escapeHtml(t('Thermal ladder', '温控阶梯')) + '</h4>' +
+					'<h4>' + escapeHtml(t('Smart curve', '智能曲线')) + '</h4>' +
 					'<span class="lf-source-pill" id="lf-source-label">' + sourceText + '</span>' +
 				'</div>' +
 				'<div class="lf-ladder-track">' +
@@ -750,10 +765,10 @@ return view.extend({
 					'<div class="lf-marker" id="lf-marker-next"></div>' +
 				'</div>' +
 				'<div class="lf-ladder-scale">' +
-					'<div class="lf-scale-item"><span>' + escapeHtml(t('Fan stop temperature', '风扇停止温度')) + '</span><strong id="lf-scale-off">--</strong></div>' +
+					'<div class="lf-scale-item"><span>' + escapeHtml(texts.smartFloor) + '</span><strong id="lf-scale-off">--</strong></div>' +
 					'<div class="lf-scale-item"><span>' + escapeHtml(t('Current temperature', '当前温度')) + '</span><strong id="lf-scale-current">--</strong></div>' +
-					'<div class="lf-scale-item"><span>' + escapeHtml(t('Fan start temperature', '风扇启动温度')) + '</span><strong id="lf-scale-on">--</strong></div>' +
-					'<div class="lf-scale-item"><span>' + escapeHtml(t('Next trip ceiling', '下一触发点上限')) + '</span><strong id="lf-scale-next">--</strong></div>' +
+					'<div class="lf-scale-item"><span>' + escapeHtml(texts.smartCeiling) + '</span><strong id="lf-scale-on">--</strong></div>' +
+					'<div class="lf-scale-item"><span>' + escapeHtml(texts.speedFeedback) + '</span><strong id="lf-scale-next">--</strong></div>' +
 				'</div>' +
 			'</div>' +
 			'<div class="lf-grid">' +
@@ -778,8 +793,8 @@ return view.extend({
 						'<div class="lf-config-item"><span>' + escapeHtml(t('Control mode', '控制模式')) + '</span><strong id="lf-config-mode">--</strong></div>' +
 						'<div class="lf-config-item"><span>' + escapeHtml(t('Manual target', '手动目标')) + '</span><strong id="lf-config-manual">--</strong></div>' +
 						'<div class="lf-config-item"><span>' + escapeHtml(t('Runtime fan speed', '当前风扇转速')) + '</span><strong id="lf-config-rpm">--</strong></div>' +
-						'<div class="lf-config-item"><span>' + escapeHtml(t('Smart start threshold', '智能启动阈值')) + '</span><strong id="lf-config-on">--</strong></div>' +
-						'<div class="lf-config-item"><span>' + escapeHtml(t('Smart stop threshold', '智能停止阈值')) + '</span><strong id="lf-config-off">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(texts.smartFloor) + '</span><strong id="lf-config-off">--</strong></div>' +
+						'<div class="lf-config-item"><span>' + escapeHtml(texts.smartCeiling) + '</span><strong id="lf-config-on">--</strong></div>' +
 					'</div>' +
 				'</div>' +
 			'</div>';
@@ -857,19 +872,25 @@ return view.extend({
 		else
 			this.nodes.supportChip.style.display = 'none';
 
-		this.setText(this.nodes.supportChip, this.runtime.supported ? texts.modeUnsupportedHint : texts.unsupportedHint);
+		this.setText(this.nodes.supportChip, this.runtime.supported ? texts.modeUnsupportedHint : (this.runtime.error || texts.unsupportedHint));
 	},
 
 	updateRuntime: function(data) {
-		this.runtime = normalizeStatus(data);
+		var nextRuntime = normalizeStatus(data);
+		var nextSignature = JSON.stringify(nextRuntime);
+
+		if (this.runtimeSignature === nextSignature)
+			return;
+
+		this.runtimeSignature = nextSignature;
+		this.runtime = nextRuntime;
 		this.updateRuntimeBadge();
 		this.syncFormState();
 	},
 
 	render: function(data) {
 		var initialStatus = normalizeStatus(data[1]);
-		var defaults = recommendedSmartWindow(initialStatus);
-		var m = new form.Map('luci-fan', t('Fan Control', '风扇控制'), t('Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty and tachometer feedback over ubus.', '为 BPI-R4 等支持 pwm-fan 的设备配置智能、狂暴和手动风扇模式。实时面板会通过 ubus 读取 CPU 温度、PWM 占空比和风扇转速反馈。'));
+		var m = new form.Map('luci-fan', t('Fan Control', '风扇控制'), t('Configure Smart, Turbo and Manual fan profiles for pwm-fan capable boards such as the BPI-R4. The live panel reads CPU temperature, PWM duty, and actual-or-estimated speed feedback over ubus.', '为 BPI-R4 等支持 pwm-fan 的设备配置智能、狂暴和手动风扇模式。实时面板会通过 ubus 读取 CPU 温度、PWM 占空比，以及真实或估算的风扇转速反馈。'));
 		var s = m.section(form.TypedSection, 'luci-fan', t('Profile Settings', '基本设置'));
 		var o;
 		var dashboard = this.renderDashboardShell(initialStatus);
@@ -880,7 +901,7 @@ return view.extend({
 		o = s.option(form.Flag, 'enabled', t('Enable fan service', '启用风扇服务'));
 		o.rmempty = false;
 		o.default = '0';
-		o.description = t('Start the fan daemon on Save & Apply. Smart mode follows CPU temperature, Turbo holds 100%, and Manual applies the slider target on pwm-fan capable boards.', '点击“保存并应用”后会启动风扇守护进程。智能模式跟随 CPU 温度，狂暴模式固定 100%，手动模式会在支持 pwm-fan 的设备上应用滑条目标。');
+		o.description = t('Start the fan daemon on Save & Apply. Smart mode uses a fixed 30.0 C to 60.0 C curve, Turbo holds the 3000 RPM equivalent ceiling, and Manual applies the slider target on pwm-fan capable boards.', '点击“保存并应用”后会启动风扇守护进程。智能模式使用固定 30.0 到 60.0 摄氏度曲线，狂暴模式固定在约 3000 RPM 的满速等效上限，手动模式会在支持 pwm-fan 的设备上应用滑条目标。');
 
 		o = s.option(form.ListValue, 'mode', t('Control mode', '控制模式'));
 		o.rmempty = false;
@@ -888,57 +909,20 @@ return view.extend({
 		o.value('smart', t('Smart', '智能'));
 		o.value('turbo', t('Turbo', '狂暴'));
 		o.value('manual', t('Manual', '手动'));
-		o.description = t('Turbo and Manual require pwm-fan hwmon support. Smart mode also falls back to writable thermal trip control on older targets.', '狂暴模式和手动模式需要 pwm-fan hwmon 支持。对于较旧的平台，智能模式也可以回退到可写的热阈值控制。');
+		o.description = t('Smart mode always follows the fixed 30.0 C to 60.0 C curve. Turbo and Manual require pwm-fan hwmon support on the target board.', '智能模式始终遵循固定的 30.0 到 60.0 摄氏度曲线。狂暴模式和手动模式需要目标设备提供 pwm-fan hwmon 支持。');
 
 		o = s.option(form.Value, 'manual_pwm', t('Manual PWM target', '手动 PWM 目标'));
 		o.datatype = 'and(uinteger,min(0),max(100))';
 		o.placeholder = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
 		o.default = String(initialStatus.manual_pwm != null ? Math.round(initialStatus.manual_pwm) : 70);
-		o.description = t('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value.', '手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM。');
+		o.description = t('Duty target in percent for Manual mode. 0 turns the fan off, 100 drives the maximum PWM value, which maps to roughly 3000 RPM in the estimated display.', '手动模式下的目标占空比，单位为百分比。0 表示关闭风扇，100 表示输出最大 PWM，在估算显示中约对应 3000 RPM。');
 		o.depends('mode', 'manual');
-
-		o = s.option(form.Value, 'on_temp', t('Smart start threshold', '智能启动阈值'));
-		o.datatype = 'and(uinteger,min(6),max(120))';
-		o.placeholder = String(defaults.on);
-		o.default = String(defaults.on);
-		o.description = t('Temperature in Celsius where Smart mode ramps the fan into a clearly audible cooling state.', '智能模式开始明显拉高风扇转速的温度，单位为摄氏度。');
-		o.depends('mode', 'smart');
-		o.validate = function(sectionId, value) {
-			var offOption = this.map.lookupOption('off_temp', sectionId);
-			var offValue = offOption && offOption[0] ? parseInt(offOption[0].formvalue(sectionId), 10) : null;
-			var startValue = parseInt(value, 10);
-
-			if (isNaN(startValue))
-				return t('Smart start threshold must be a valid integer.', '智能启动阈值必须是有效整数。');
-			if (!isNaN(offValue) && startValue <= offValue)
-				return t('Smart start threshold must be greater than the stop threshold.', '智能启动阈值必须高于停止阈值。');
-
-			return true;
-		};
-
-		o = s.option(form.Value, 'off_temp', t('Smart stop threshold', '智能停止阈值'));
-		o.datatype = 'and(uinteger,min(5),max(119))';
-		o.placeholder = String(defaults.off);
-		o.default = String(defaults.off);
-		o.description = t('Temperature in Celsius where Smart mode drops back to zero duty. Keep it at least 3 C below the start threshold.', '智能模式降回 0 占空比的温度，单位为摄氏度。建议至少比启动阈值低 3 摄氏度。');
-		o.depends('mode', 'smart');
-		o.validate = function(sectionId, value) {
-			var onOption = this.map.lookupOption('on_temp', sectionId);
-			var onValue = onOption && onOption[0] ? parseInt(onOption[0].formvalue(sectionId), 10) : null;
-			var stopValue = parseInt(value, 10);
-
-			if (isNaN(stopValue))
-				return t('Smart stop threshold must be a valid integer.', '智能停止阈值必须是有效整数。');
-			if (!isNaN(onValue) && stopValue >= onValue)
-				return t('Smart stop threshold must stay below the start threshold.', '智能停止阈值必须低于启动阈值。');
-			return true;
-		};
 
 		o = s.option(form.Value, 'poll_interval', t('Polling interval', '轮询间隔'));
 		o.datatype = 'and(uinteger,min(1),max(30))';
-		o.placeholder = String(initialStatus.poll_interval != null ? Math.round(initialStatus.poll_interval) : 3);
-		o.default = String(initialStatus.poll_interval != null ? Math.round(initialStatus.poll_interval) : 3);
-		o.description = t('Fan daemon loop interval in seconds. Lower values react faster, higher values reduce churn.', '风扇守护进程的轮询间隔，单位为秒。值越小响应越快，值越大越平稳。');
+		o.placeholder = String(initialStatus.poll_interval != null ? Math.round(initialStatus.poll_interval) : 5);
+		o.default = String(initialStatus.poll_interval != null ? Math.round(initialStatus.poll_interval) : 5);
+		o.description = t('Fan daemon loop interval in seconds. The default 5-second cadence is usually enough for the 30.0 C to 60.0 C smart curve and reduces unnecessary PWM writes.', '风扇守护进程的轮询间隔，单位为秒。默认 5 秒通常已足够匹配 30.0 到 60.0 摄氏度智能曲线，并可减少无意义的 PWM 写入。');
 
 		return m.render().then(function(mapNode) {
 			this.mapNode = mapNode;
@@ -947,7 +931,7 @@ return view.extend({
 			this.bindFields();
 			this.updateRuntime(initialStatus);
 			this.requestFrame(this.animationLoop.bind(this));
-			poll.add(this.pollStatus.bind(this));
+			poll.add(this.pollStatus.bind(this), this.statusPollInterval());
 			return E('div', { 'class': 'lf-page' }, [ dashboard, mapNode ]);
 		}.bind(this));
 	}
