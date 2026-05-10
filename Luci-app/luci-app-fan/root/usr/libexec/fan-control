@@ -76,6 +76,45 @@ read_uci_uint() {
     printf '%s\n' "$value"
 }
 
+parse_celsius_to_milli() {
+    awk -v value="$1" 'BEGIN {
+        if (value == "" || value !~ /^([0-9]+([.][0-9]+)?|[.][0-9]+)$/)
+            exit 1
+
+        milli = int((value * 1000) + 0.5)
+        if (milli < 0)
+            exit 1
+
+        printf "%d", milli
+    }'
+}
+
+read_uci_temp_milli() {
+    value=$(uci -q get "luci-fan.@luci-fan[0].$1" 2>/dev/null)
+    [ -n "$value" ] || return 1
+    parse_celsius_to_milli "$value"
+}
+
+resolve_smart_window_milli() {
+    on_milli=$(read_uci_temp_milli on_temp) || on_milli=$SMART_MAX_MILLI
+    off_milli=$(read_uci_temp_milli off_temp) || off_milli=$SMART_MIN_MILLI
+
+    on_milli=$(clamp_uint "$on_milli" 100 150000)
+    off_milli=$(clamp_uint "$off_milli" 0 149900)
+
+    if [ "$on_milli" -le "$off_milli" ]; then
+        if [ "$off_milli" -ge 149900 ]; then
+            off_milli=149800
+            on_milli=149900
+        else
+            on_milli=$((off_milli + 100))
+        fi
+    fi
+
+    SMART_WINDOW_ON_MILLI=$on_milli
+    SMART_WINDOW_OFF_MILLI=$off_milli
+}
+
 read_uci_mode() {
     value=$(uci -q get 'luci-fan.@luci-fan[0].mode' 2>/dev/null)
 
@@ -490,7 +529,8 @@ set_fan_tp() {
 
 # print: current thermal sensor value and fan on temp
 get_temp() {
-    trip_temp=$SMART_MAX_MILLI
+    resolve_smart_window_milli
+    trip_temp=$SMART_WINDOW_ON_MILLI
 
     zone=$(resolve_primary_thermal_zone 2>/dev/null) || zone=''
     if [ -n "$zone" ] && [ -f "/sys/class/thermal/$zone/temp" ]; then
@@ -550,6 +590,8 @@ apply_current_config() {
         return 0
     fi
 
+    resolve_smart_window_milli
+
     if resolve_pwm_hwmon_cached; then
         case "$mode" in
             turbo)
@@ -567,7 +609,7 @@ apply_current_config() {
 
                 [ -n "$temp_milli" ] || return 1
 
-                raw=$(smart_pwm_raw "$temp_milli" "$SMART_MIN_MILLI" "$SMART_MAX_MILLI")
+                raw=$(smart_pwm_raw "$temp_milli" "$SMART_WINDOW_OFF_MILLI" "$SMART_WINDOW_ON_MILLI")
                 set_pwm_raw "$raw"
                 return 0
                 ;;
@@ -576,7 +618,7 @@ apply_current_config() {
 
     case "$mode" in
         smart)
-            set_fan_tp "$SMART_MAX_MILLI" "$SMART_MIN_MILLI"
+            set_fan_tp "$SMART_WINDOW_ON_MILLI" "$SMART_WINDOW_OFF_MILLI"
             ;;
         *)
             return 1

@@ -59,7 +59,7 @@ msgstr ""
 msgid "BPI-R4 tuned layout with live CPU temperature, PWM duty, and fan speed feedback across smart, manual and turbo modes."
 msgstr ""
 
-msgid "Live OpenWrt cooling dashboard with a fixed 30 C to 60 C smart curve, plus manual and turbo profiles on pwm-fan capable hardware."
+msgid "Live OpenWrt cooling dashboard with a configurable smart temperature window, plus manual and turbo profiles on pwm-fan capable hardware."
 msgstr ""
 
 msgid "Turbo"
@@ -74,7 +74,7 @@ msgstr ""
 msgid "Turbo mode locks the fan at the 3000 RPM equivalent ceiling after Save & Apply."
 msgstr ""
 
-msgid "Smart mode uses a fixed 30.0 C to 60.0 C curve: below 30.0 C the fan stops, above 60.0 C it stays at the 3000 RPM equivalent ceiling."
+msgid "Smart mode linearly ramps from the stop temperature to the full-speed temperature ceiling, with a maximum fan speed of 3000 RPM."
 msgstr ""
 
 msgid "Manual mode applies the selected duty target after Save & Apply and reports the available fan speed feedback."
@@ -182,10 +182,16 @@ msgstr ""
 msgid "Enable fan service"
 msgstr ""
 
-msgid "Start the fan daemon on Save & Apply. Smart mode uses a fixed 30.0 C to 60.0 C curve, Turbo holds the 3000 RPM equivalent ceiling, and Manual applies the slider target on pwm-fan capable boards."
+msgid "Start the fan daemon on Save & Apply. Smart mode uses the configured temperature window, Turbo holds the 3000 RPM ceiling, and Manual applies the slider target on pwm-fan capable boards."
 msgstr ""
 
-msgid "Smart mode always follows the fixed 30.0 C to 60.0 C curve. Turbo and Manual require pwm-fan hwmon support on the target board."
+msgid "Smart mode follows the configured stop and full-speed temperatures. Turbo and Manual require pwm-fan hwmon support on the target board."
+msgstr ""
+
+msgid "Temperature in C below which the smart profile stops the fan. You can customize when the fan starts to stay off."
+msgstr ""
+
+msgid "Temperature in C at which smart mode reaches the 3000 RPM ceiling."
 msgstr ""
 
 msgid "Manual PWM target"
@@ -197,5 +203,5 @@ msgstr ""
 msgid "Polling interval"
 msgstr ""
 
-msgid "Fan daemon loop interval in seconds. The default 5-second cadence is usually enough for the 30.0 C to 60.0 C smart curve and reduces unnecessary PWM writes."
+msgid "Fan daemon loop interval in seconds. The default 5-second cadence is usually enough for the configurable smart curve and reduces unnecessary PWM writes."
 msgstr ""

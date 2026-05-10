@@ -76,6 +76,61 @@ get_uci_temp() {
 	printf '%s\n' "$value"
 }
 
+parse_celsius_to_milli() {
+	awk -v value="$1" 'BEGIN {
+		if (value == "" || value !~ /^([0-9]+([.][0-9]+)?|[.][0-9]+)$/)
+			exit 1
+
+		milli = int((value * 1000) + 0.5)
+		if (milli < 0)
+			exit 1
+
+		printf "%d", milli
+	}'
+}
+
+get_uci_temp_milli() {
+	local value
+
+	value=$(uci -q get "luci-fan.@luci-fan[0].$1" 2>/dev/null)
+	[ -n "$value" ] || return 1
+	parse_celsius_to_milli "$value"
+}
+
+clamp_uint() {
+	local value minimum maximum
+
+	value=$1
+	minimum=$2
+	maximum=$3
+
+	[ "$value" -lt "$minimum" ] && value=$minimum
+	[ "$value" -gt "$maximum" ] && value=$maximum
+	printf '%s\n' "$value"
+}
+
+resolve_smart_window_milli() {
+	local on_milli off_milli
+
+	on_milli=$(get_uci_temp_milli on_temp) || on_milli=$SMART_MAX_MILLI
+	off_milli=$(get_uci_temp_milli off_temp) || off_milli=$SMART_MIN_MILLI
+
+	on_milli=$(clamp_uint "$on_milli" 100 150000)
+	off_milli=$(clamp_uint "$off_milli" 0 149900)
+
+	if [ "$on_milli" -le "$off_milli" ]; then
+		if [ "$off_milli" -ge 149900 ]; then
+			off_milli=149800
+			on_milli=149900
+		else
+			on_milli=$((off_milli + 100))
+		fi
+	fi
+
+	SMART_WINDOW_ON_MILLI=$on_milli
+	SMART_WINDOW_OFF_MILLI=$off_milli
+}
+
 milli_to_celsius() {
 	awk -v value="$1" 'BEGIN { printf "%.1f", value / 1000 }'
 }
@@ -106,8 +161,22 @@ estimate_rpm_from_raw() {
 	}'
 }
 
+clamp_rpm() {
+	local value
+
+	value=$1
+	is_uint "$value" || return 1
+	[ "$value" -gt "$SMART_MAX_RPM" ] && value=$SMART_MAX_RPM
+	printf '%s\n' "$value"
+}
+
 smart_pwm_raw() {
-	awk -v temp="$1" -v min_temp="$SMART_MIN_MILLI" -v max_temp="$SMART_MAX_MILLI" 'BEGIN {
+	local min_temp max_temp
+
+	min_temp=${2:-$SMART_MIN_MILLI}
+	max_temp=${3:-$SMART_MAX_MILLI}
+
+	awk -v temp="$1" -v min_temp="$min_temp" -v max_temp="$max_temp" 'BEGIN {
 		if (temp <= min_temp)
 			raw = 0
 		else if (temp >= max_temp)
@@ -358,7 +427,7 @@ json_add_empty_runtime() {
 get_status() {
 	local zone_path primary_zone_path
 	local fan_on_temp zone_temp fan_off_temp next_trip_temp thermal_type headroom start_delta load_ratio
-	local configured_on configured_off configured_on_milli configured_off_milli state
+	local configured_on_milli configured_off_milli state
 	local thermal_supported pwm_supported mode_supported runtime_error supported trip_point_value trip_supported
 	local actual_fan_rpm estimated_fan_rpm display_fan_rpm rpm_source target_raw
 
@@ -402,9 +471,12 @@ get_status() {
 		fi
 	fi
 
-	fan_off_temp=$SMART_MIN_MILLI
-	fan_on_temp=$SMART_MAX_MILLI
-	next_trip_temp=$SMART_MAX_MILLI
+	resolve_smart_window_milli
+	configured_on_milli=$SMART_WINDOW_ON_MILLI
+	configured_off_milli=$SMART_WINDOW_OFF_MILLI
+	fan_off_temp=$configured_off_milli
+	fan_on_temp=$configured_on_milli
+	next_trip_temp=$configured_on_milli
 
 	if read_pwm_runtime; then
 		pwm_supported=1
@@ -424,11 +496,6 @@ get_status() {
 			;;
 	esac
 
-	configured_on=$(get_uci_temp on_temp) || configured_on=''
-	configured_off=$(get_uci_temp off_temp) || configured_off=''
-
-	configured_on_milli=$SMART_MAX_MILLI
-	configured_off_milli=$SMART_MIN_MILLI
 	actual_fan_rpm=''
 	estimated_fan_rpm=''
 	display_fan_rpm=''
@@ -436,8 +503,8 @@ get_status() {
 
 	if [ "$pwm_supported" = '1' ]; then
 		if is_uint "$PWM_RPM"; then
-			actual_fan_rpm=$PWM_RPM
-			display_fan_rpm=$PWM_RPM
+			actual_fan_rpm=$(clamp_rpm "$PWM_RPM")
+			display_fan_rpm=$actual_fan_rpm
 			rpm_source='actual'
 		fi
 
@@ -453,7 +520,7 @@ get_status() {
 					;;
 				*)
 					if [ -n "$zone_temp" ]; then
-						target_raw=$(smart_pwm_raw "$zone_temp")
+						target_raw=$(smart_pwm_raw "$zone_temp" "$configured_off_milli" "$configured_on_milli")
 					fi
 					;;
 			esac
@@ -461,6 +528,10 @@ get_status() {
 			if is_uint "$target_raw"; then
 				estimated_fan_rpm=$(estimate_rpm_from_raw "$target_raw")
 			fi
+		fi
+
+		if is_uint "$estimated_fan_rpm"; then
+			estimated_fan_rpm=$(clamp_rpm "$estimated_fan_rpm")
 		fi
 
 		if [ -z "$display_fan_rpm" ] && is_uint "$estimated_fan_rpm"; then
@@ -479,9 +550,9 @@ get_status() {
 			else
 				state='standby'
 			fi
-		elif [ -n "$zone_temp" ] && [ "$zone_temp" -ge "$SMART_MAX_MILLI" ]; then
+		elif [ -n "$zone_temp" ] && [ "$zone_temp" -ge "$configured_on_milli" ]; then
 			state='active'
-		elif [ -n "$zone_temp" ] && [ "$zone_temp" -gt "$SMART_MIN_MILLI" ]; then
+		elif [ -n "$zone_temp" ] && [ "$zone_temp" -gt "$configured_off_milli" ]; then
 			state='transition'
 		else
 			state='standby'
@@ -489,10 +560,10 @@ get_status() {
 	fi
 
 	headroom=''
-	[ -n "$zone_temp" ] && headroom=$((SMART_MAX_MILLI - zone_temp))
+	[ -n "$zone_temp" ] && headroom=$((configured_on_milli - zone_temp))
 	start_delta=''
-	[ -n "$zone_temp" ] && start_delta=$((SMART_MIN_MILLI - zone_temp))
-	load_ratio=$(compute_ratio "$zone_temp" "$SMART_MIN_MILLI" "$SMART_MAX_MILLI" "$SMART_MAX_MILLI")
+	[ -n "$zone_temp" ] && start_delta=$((configured_off_milli - zone_temp))
+	load_ratio=$(compute_ratio "$zone_temp" "$configured_off_milli" "$configured_on_milli" "$configured_on_milli")
 	supported=0
 	if { [ "$thermal_supported" = '1' ] && [ "$pwm_supported" = '1' ]; } || [ "$trip_supported" = '1' ]; then
 		supported=1
@@ -535,8 +606,8 @@ get_status() {
 	json_add_string estimated_fan_rpm "$estimated_fan_rpm"
 	json_add_string rpm_source "$rpm_source"
 	json_add_int fan_max_rpm "$SMART_MAX_RPM"
-	json_add_string smart_min_temp "$(milli_to_celsius "$SMART_MIN_MILLI")"
-	json_add_string smart_max_temp "$(milli_to_celsius "$SMART_MAX_MILLI")"
+	json_add_string smart_min_temp "$(milli_to_celsius "$configured_off_milli")"
+	json_add_string smart_max_temp "$(milli_to_celsius "$configured_on_milli")"
 	json_dump
 	json_cleanup
 }
