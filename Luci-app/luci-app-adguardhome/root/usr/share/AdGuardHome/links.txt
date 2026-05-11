@@ -1,6 +1,0 @@
-# Stable channel
-https://static.adguard.com/adguardhome/release/AdGuardHome_linux_${Arch}.tar.gz
-# Beta channel, uncomment this line if you want to try the testing build
-#https://static.adguard.com/adguardhome/beta/AdGuardHome_linux_${Arch}.tar.gz
-# GitHub release fallback
-https://github.com/AdguardTeam/AdGuardHome/releases/download/${latest_ver}/AdGuardHome_linux_${Arch}.tar.gz
