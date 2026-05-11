@@ -7,10 +7,21 @@ STOP=01
 
 CONFIGURATION=AdGuardHome
 CRON_FILE=/etc/crontabs/root
+EXTRA_COMMANDS="do_redirect testbackup test_crontab force_reload isrunning"
+EXTRA_HELP="        do_redirect 0 or 1\
+        testbackup backup or restore\
 		test_crontab
 		force_reload
 		isrunning"
+
 set_forward_dnsmasq()
+{
+	local PORT="$1"
+	addr="127.0.0.1#$PORT"
+	OLD_SERVER="`uci get dhcp.@dnsmasq[0].server 2>/dev/null`"
+	echo $OLD_SERVER | grep "^$addr" >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		return
 	fi
 	uci delete dhcp.@dnsmasq[0].server 2>/dev/null
 	uci add_list dhcp.@dnsmasq[0].server=$addr
@@ -34,67 +45,76 @@ stop_forward_dnsmasq()
 	echo $OLD_SERVER | grep "^$addr" >/dev/null 2>&1
 	if [ $? -ne 0 ]; then
 		return
-				return 0
+	fi
 
 	uci del_list dhcp.@dnsmasq[0].server=$addr 2>/dev/null
 	addrlist="`uci get dhcp.@dnsmasq[0].server 2>/dev/null`"
-				sed -i "${line_num}s|.*|  ${child_key}: ${value}|" "$file"
-			else
-				sed -i "${line_num}s|.*|${parent_key}: ${value}|" "$file"
-			fi
-		local line_num=0
-		local found=0
-		local IFS='.'
-		local parts
-		read -ra parts <<< "$yaml"
-		local depth=0
-		while IFS= read -r line; do
-			line_num=$((line_num + 1))
-			if [ "$depth" -lt "${#parts[@]}" ]; then
-				local pattern="^[[:space:]]*${parts[$depth]}[[:space:]]*:"
-				if [[ "$line" =~ $pattern ]]; then
-					depth=$((depth + 1))
-					if [ "$depth" -eq "${#parts[@]}" ]; then
-						if [ -z "$ro" ]; then
-							sed -i "${line_num}s/.*/  ${parts[$((depth-1))]}: ${value}/" "$file"
-							found=1
-						else
-							echo "$line" | sed 's/.*: *//'
-							found=1
-						fi
-						break
-					fi
-				fi
-			fi
-		done < "$file"
-		[ "$found" -eq 0 ] && [ -z "$ro" ] && return 1
-		return 0
+	if [ -z "$addrlist" ] ; then
+		resolvfile="/tmp/resolv.conf.d/resolv.conf.auto"
+		[ ! -f "$resolvfile" ] && resolvfile="/tmp/resolv.conf.auto"
+		uci set dhcp.@dnsmasq[0].resolvfile="$resolvfile" 2>/dev/null
+		uci delete dhcp.@dnsmasq[0].noresolv 2>/dev/null
+	fi
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart
+}
+
+set_iptable()
+{
+	local ipv6_server=$1
+	local tcp_server=$2
+	uci -q batch <<-EOF >/dev/null 2>&1
+  delete firewall.AdGuardHome
+	set firewall.AdGuardHome=include
+	set firewall.AdGuardHome.type=script
+	set firewall.AdGuardHome.path=/usr/share/AdGuardHome/firewall.start
+	set firewall.AdGuardHome.reload=1
+	commit firewall
+EOF
+
+	[ "$tcp_server" == "1" ] && iptables -t nat -I PREROUTING 1 -m comment --comment "AdGuardHome" -p tcp --dport 53 -j REDIRECT --to-ports $AdGuardHome_PORT
+	iptables -t nat -I PREROUTING 1 -m comment --comment "AdGuardHome" -p udp --dport 53 -j REDIRECT --to-ports $AdGuardHome_PORT
+
+	[ "$ipv6_server" == 0 ] && return
+
+	[ "$tcp_server" == "1" ] && ip6tables -t nat -I PREROUTING 1 -m comment --comment "AdGuardHome" -p tcp --dport 53 -j REDIRECT --to-ports $AdGuardHome_PORT
+	ip6tables -t nat -I PREROUTING 1 -m comment --comment "AdGuardHome" -p udp --dport 53 -j REDIRECT --to-ports $AdGuardHome_PORT
+}
+
 clear_iptable()
 {
 	uci -q batch <<-EOF >/dev/null 2>&1
   delete firewall.AdGuardHome
 	commit firewall
 EOF
-	local OLD_PORT="$1"
-	local ipv6_server=$2
-	IPS="`ifconfig | grep "inet addr" | grep -v ":127" | grep "Bcast" | awk '{print $2}' | awk -F : '{print $2}'`"
-	for IP in $IPS
-	do
-		iptables -t nat -D PREROUTING -p udp -d $IP --dport 53 -j REDIRECT --to-ports $OLD_PORT >/dev/null 2>&1
-		iptables -t nat -D PREROUTING -p tcp -d $IP --dport 53 -j REDIRECT --to-ports $OLD_PORT >/dev/null 2>&1
-	done
 
-	if [ "$ipv6_server" == 0 ]; then
-		return
+	nums=$(iptables -t nat -n -L PREROUTING 2>/dev/null | grep -c "AdGuardHome")
+	if [ -n "$nums" ]; then
+		until [ "$nums" = 0 ]
+		do
+			rules=$(iptables -t nat -n -L PREROUTING --line-num 2>/dev/null | grep "AdGuardHome" | awk '{print $1}')
+			for rule in $rules
+			do
+				iptables -t nat -D PREROUTING $rule 2> /dev/null
+				break
+			done
+			nums=$(expr $nums - 1)
+		done
 	fi
-	echo "warn ip6tables nat mod is needed"
-	IPS="`ifconfig | grep "inet6 addr" | grep -v " fe80::" | grep -v " ::1" | grep "Global" | awk '{print $3}'`"
-	for IP in $IPS
-	do
-		ip6tables -t nat -D PREROUTING -p udp -d $IP --dport 53 -j REDIRECT --to-ports $OLD_PORT >/dev/null 2>&1
-		ip6tables -t nat -D PREROUTING -p tcp -d $IP --dport 53 -j REDIRECT --to-ports $OLD_PORT >/dev/null 2>&1
-	done
 
+	nums=$(ip6tables -t nat -n -L PREROUTING 2>/dev/null | grep -c "AdGuardHome")
+	if [ -n "$nums" ]; then
+		until [ "$nums" = 0 ]
+		do
+			rules=$(ip6tables -t nat -n -L PREROUTING --line-num 2>/dev/null | grep "AdGuardHome" | awk '{print $1}')
+			for rule in $rules
+			do
+				ip6tables -t nat -D PREROUTING $rule 2> /dev/null
+				break
+			done
+			nums=$(expr $nums - 1)
+		done
+	fi
 }
 
 service_triggers() {

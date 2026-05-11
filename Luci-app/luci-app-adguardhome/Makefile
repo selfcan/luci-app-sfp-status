@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-adguardhome
 PKG_VERSION:=1.8
-PKG_RELEASE:=15
+PKG_RELEASE:=17
 
 LUCI_DEPENDS:=+luci-base +rpcd +!wget&&!curl:wget
 
@@ -29,12 +29,6 @@ define Package/luci-app-adguardhome/description
 	LuCI support for adguardhome
 endef
 
-define Build/Prepare
-	chmod 0755 $(PKG_BUILD_DIR)/root/etc/init.d/AdGuardHome
-	chmod 0755 $(PKG_BUILD_DIR)/root/etc/uci-defaults/40_luci-AdGuardHome
-	chmod 0755 $(PKG_BUILD_DIR)/root/usr/libexec/rpcd/luci.adguardhome
-endef
-
 define Build/Compile
 endef
 
@@ -49,10 +43,18 @@ define Package/luci-app-adguardhome/install
 	cp -pR ./htdocs/* $(1)/www/
 	$(INSTALL_DIR) $(1)/
 	cp -pR ./root/* $(1)/
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
-	po2lmo ./po/zh-cn/AdGuardHome.po $(1)/usr/lib/lua/luci/i18n/AdGuardHome.zh_Hans.lmo
-	po2lmo ./po/zh-cn/AdGuardHome.po $(1)/usr/lib/lua/luci/i18n/AdGuardHome.zh-cn.lmo
-	po2lmo ./po/en/AdGuardHome.po $(1)/usr/lib/lua/luci/i18n/AdGuardHome.en.lmo
+	chmod 0755 \
+		$(1)/etc/init.d/AdGuardHome \
+		$(1)/etc/uci-defaults/40_luci-AdGuardHome \
+		$(1)/usr/libexec/rpcd/luci.adguardhome \
+		$(1)/usr/share/AdGuardHome/addhost.sh \
+		$(1)/usr/share/AdGuardHome/firewall.start \
+		$(1)/usr/share/AdGuardHome/getsyslog.sh \
+		$(1)/usr/share/AdGuardHome/gfw2adg.sh \
+		$(1)/usr/share/AdGuardHome/tailto.sh \
+		$(1)/usr/share/AdGuardHome/update_core.sh \
+		$(1)/usr/share/AdGuardHome/waitnet.sh \
+		$(1)/usr/share/AdGuardHome/watchconfig.sh
 endef
 
 define Package/luci-app-adguardhome/postinst
