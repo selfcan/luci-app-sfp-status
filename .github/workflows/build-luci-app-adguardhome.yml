@@ -12,7 +12,7 @@ on:
           - openwrt
           - immortalwrt
       openwrt_version:
-        description: OpenWrt release version
+        description: OpenWrt release version, for example 24.10.0 or 25.12.0
         required: false
         default: '24.10.0'
       openwrt_target:
@@ -180,9 +180,29 @@ jobs:
         working-directory: ${{ env.SDK_DIR }}
         run: |
           set -eux
+          package_po_dir="$SDK_DIR/feeds/luci/applications/luci-app-adguardhome/po"
+          adguardhome_i18n_langs=''
+
+          if [ -d "$package_po_dir" ]; then
+            adguardhome_i18n_langs="$(find "$package_po_dir" -mindepth 2 -maxdepth 2 -type f -name '*.po' -printf '%h\n' | sed 's#^.*/##' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
+          fi
+
           echo 'CONFIG_PACKAGE_luci-app-adguardhome=y' >> .config
+
+          for lang in $adguardhome_i18n_langs; do
+            echo "CONFIG_PACKAGE_luci-i18n-adguardhome-${lang}=y" >> .config
+          done
+
           make defconfig
+
+          {
+            echo 'ADGUARDHOME_I18N_LANGS<<EOF'
+            printf '%s\n' "$adguardhome_i18n_langs"
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+
           grep '^CONFIG_PACKAGE_luci-app-adguardhome=' .config
+          grep '^CONFIG_PACKAGE_luci-i18n-adguardhome-' .config || true
 
       - name: Compile package
         working-directory: ${{ env.SDK_DIR }}
@@ -197,12 +217,22 @@ jobs:
           rm -rf "$artifact_dir"
           mkdir -p "$artifact_dir"
 
-          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-app-adguardhome*.ipk' -o -path '*/luci/Packages*' \) -exec cp -f {} "$artifact_dir/" \;
+          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-app-adguardhome*.ipk' -o -name 'luci-i18n-adguardhome*.ipk' -o -path '*/luci/Packages*' \) -exec cp -f {} "$artifact_dir/" \;
 
           if ! find "$artifact_dir" -maxdepth 1 -type f -name 'luci-app-adguardhome*.ipk' | grep -q .; then
             echo 'No luci-app-adguardhome ipk was produced by the build.' >&2
             find "$SDK_DIR/bin/packages" -maxdepth 4 -type f | sort >&2
             exit 1
+          fi
+
+          if [ -n "${ADGUARDHOME_I18N_LANGS:-}" ]; then
+            for lang in $ADGUARDHOME_I18N_LANGS; do
+              if ! find "$artifact_dir" -maxdepth 1 -type f -name "luci-i18n-adguardhome-${lang}_*.ipk" | grep -q .; then
+                echo "No luci-i18n-adguardhome-${lang} ipk was produced by the build." >&2
+                find "$SDK_DIR/bin/packages" -maxdepth 4 -type f | sort >&2
+                exit 1
+              fi
+            done
           fi
 
           echo "ARTIFACT_DIR=$artifact_dir" >> "$GITHUB_ENV"
