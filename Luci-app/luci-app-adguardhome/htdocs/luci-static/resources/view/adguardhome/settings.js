@@ -64,6 +64,30 @@ function ensureArray(value) {
 	return Array.isArray(value) ? value : [];
 }
 
+function uniqueList(values) {
+	var seen = {};
+	var result = [];
+
+	ensureArray(values).forEach(function(value) {
+		value = String(value == null ? '' : value).trim();
+
+		if (!value || seen[value])
+			return;
+
+		seen[value] = true;
+		result.push(value);
+	});
+
+	return result;
+}
+
+function backupChoiceList(meta) {
+	var defaults = [ 'filters', 'stats.db', 'querylog.json', 'sessions.db' ];
+	var choices = uniqueList(defaults.concat(ensureObject(meta).backup_choices || []));
+
+	return choices.length ? choices : defaults;
+}
+
 function ensureConfigSection() {
 	var sections = uci.sections('AdGuardHome', 'AdGuardHome') || [];
 	var hasNamedSection = sections.some(function(section) {
@@ -335,9 +359,7 @@ return view.extend({
 	render: function(data) {
 		var status = ensureObject(data && data[1]);
 		var meta = ensureObject(data && data[2]);
-		var backupChoices = ensureArray(meta.backup_choices).filter(function(choice) {
-			return choice != null && String(choice) !== '';
-		});
+		var backupChoices = backupChoiceList(meta);
 
 		ensureConfigSection();
 

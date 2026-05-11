@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-adguardhome
 PKG_VERSION:=1.8
-PKG_RELEASE:=19
+PKG_RELEASE:=20
 
 LUCI_DEPENDS:=+luci-base +rpcd +!wget&&!curl:wget
 
