@@ -65,6 +65,17 @@ function setBusy(button, busy) {
 	button.classList.toggle('spinning', !!busy);
 }
 
+function createStatusBox(message) {
+	return E('div', { 'class': 'agh-status' }, message || t('Ready.', '就绪。'));
+}
+
+function actionHeader(label, title) {
+	return E('div', { 'class': 'agh-action-head' }, [
+		E('span', { 'class': 'agh-action-badge' }, label),
+		E('h3', {}, title)
+	]);
+}
+
 function runRpcAction(button, statusBox, call, success, fallback) {
 	setBusy(button, true);
 	return call().then(function() {
@@ -100,12 +111,20 @@ var style = [
 	'.agh-hero p{max-width:72rem;margin:0;color:rgba(247,251,248,.86);font-size:14px;line-height:1.75}',
 	'.agh-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.agh-chip{padding:14px;border-radius:16px;background:#fff;border:1px solid rgba(22,54,62,.1);box-shadow:0 8px 24px rgba(17,48,54,.06);min-width:0}.agh-chip span{display:block;font-size:12px;color:#667084}.agh-chip strong{display:block;margin-top:6px;font-size:18px;line-height:1.2;color:#17373c;word-break:break-word}.agh-ok{color:#1d8b5b!important}.agh-warn{color:#ad7417!important}.agh-bad{color:#c94d5c!important}',
 	'.agh-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}',
-	'.agh-action{display:grid;align-content:start;gap:12px;padding:18px;border-radius:18px;background:#fff;border:1px solid rgba(22,54,62,.1);box-shadow:0 10px 28px rgba(17,48,54,.07);min-width:0}',
-	'.agh-action h3{margin:0;font-size:16px;line-height:1.35;color:#17373c}.agh-action p{margin:0;color:#667084;line-height:1.6;font-size:13px}',
-	'.agh-action textarea{width:100%;min-height:150px;border-radius:14px;border-color:rgba(22,54,62,.16);font-family:monospace;font-size:12px;box-sizing:border-box}',
+	'.agh-action{position:relative;display:grid;align-content:start;gap:12px;padding:18px;border-radius:18px;background:linear-gradient(180deg,#fff 0%,#fbfcfc 100%);border:1px solid rgba(22,54,62,.1);box-shadow:0 10px 28px rgba(17,48,54,.07);min-width:0;overflow:hidden}',
+	'.agh-action:before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--agh-accent,#1f6a5d)}',
+	'.agh-action-head{display:grid;gap:8px;padding-bottom:2px}',
+	'.agh-action-badge{display:inline-flex;align-items:center;width:max-content;padding:5px 10px;border-radius:999px;background:rgba(31,106,93,.12);color:#1d6559;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}',
+	'.agh-action h3{all:unset;display:block;font-size:17px;line-height:1.35;font-weight:700;color:#17373c}',
+	'.agh-action p{margin:0;color:#5e6d79;line-height:1.7;font-size:13px}',
+	'.agh-action textarea{width:100%;min-height:150px;border-radius:14px;border-color:rgba(22,54,62,.16);background:rgba(255,255,255,.9);font-family:monospace;font-size:12px;box-sizing:border-box}',
+	'.agh-action-update{--agh-accent:#188a5b;background:linear-gradient(180deg,#fff 0%,#f2fbf6 100%)}.agh-action-update .agh-action-badge{background:rgba(24,138,91,.12);color:#176f4c}',
+	'.agh-action-links{--agh-accent:#3466b0;background:linear-gradient(180deg,#fff 0%,#f2f7ff 100%)}.agh-action-links .agh-action-badge{background:rgba(52,102,176,.12);color:#2f5b9a}',
+	'.agh-action-password{--agh-accent:#a86a2b;background:linear-gradient(180deg,#fff 0%,#fff7ef 100%)}.agh-action-password .agh-action-badge{background:rgba(168,106,43,.12);color:#8b5723}',
+	'.agh-action-gfw{--agh-accent:#556b2f;background:linear-gradient(180deg,#fff 0%,#f6f9ee 100%)}.agh-action-gfw .agh-action-badge{background:rgba(85,107,47,.13);color:#556b2f}',
 	'.agh-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.agh-row .btn{border-radius:12px}',
 	'.agh-row select,.agh-row input{max-width:100%;min-height:34px}',
-	'.agh-status{margin-top:12px;padding:10px 12px;border-radius:14px;background:#f3f7f7;color:#51606f;font-size:12px;line-height:1.55}',
+	'.agh-status{margin-top:12px;padding:10px 12px;border-radius:14px;background:rgba(239,244,245,.92);color:#51606f;font-size:12px;line-height:1.6}',
 	'.agh-settings .cbi-map{border-radius:22px;border:1px solid rgba(22,54,62,.1);box-shadow:0 12px 30px rgba(17,48,54,.08);overflow:visible;background:#fff}',
 	'.agh-settings .cbi-map>h2,.agh-settings .cbi-map>.cbi-map-descr{display:none}',
 	'.agh-settings .cbi-section{margin:0;border:0;box-shadow:none;background:transparent}.agh-settings .cbi-section-node{padding-top:8px;background:transparent;overflow:visible}',
@@ -130,7 +149,6 @@ return view.extend({
 		var meta = data[2] || {};
 		var linksText = meta.links || buildLinks(status.release_channel);
 		var rpcError = status._rpc_error || meta._rpc_error;
-		var statusBox = E('div', { 'class': 'agh-status' }, rpcError ? actionError(rpcError, t('RPC backend unavailable', 'RPC 后端不可用')) : t('Ready.', '就绪。'));
 		var linksBox = E('textarea', {}, linksText);
 		var channelSelect = E('select', {}, [
 			E('option', { value: 'release' }, t('Stable', '稳定版')),
@@ -193,7 +211,7 @@ return view.extend({
 				E('style', {}, style),
 				E('section', { 'class': 'agh-hero' }, [ E('h2', {}, t('AdGuard Home Settings', 'AdGuard Home 设置中心')), E('p', {}, t('Operate the service, update the core, manage download sources and tune UCI options from one grouped page.', '在一个分组页面中完成服务控制、核心更新、下载源管理和 UCI 参数调整。')) ]),
 				statusSummary(status, rpcError),
-				E('section', { 'class': 'agh-actions' }, [ updateCard(statusBox), linksCard(channelSelect, archSelect, linksBox, statusBox), passwordCard(statusBox), gfwCard(statusBox) ]),
+				E('section', { 'class': 'agh-actions' }, [ updateCard(rpcError), linksCard(channelSelect, archSelect, linksBox, rpcError), passwordCard(), gfwCard(rpcError) ]),
 				formNode
 			]);
 		});
@@ -213,18 +231,23 @@ function chip(label, value, cls) {
 	return E('div', { 'class': 'agh-chip' }, [ E('span', {}, label), E('strong', { 'class': cls || '' }, value) ]);
 }
 
-function updateCard(statusBox) {
+function updateCard(rpcError) {
+	var statusBox = createStatusBox(rpcError ? actionError(rpcError, t('RPC backend unavailable', 'RPC 后端不可用')) : t('Ready.', '就绪。'));
 	var updateButton = E('button', { 'class': 'btn cbi-button cbi-button-action' }, t('Update', '更新'));
 	var forceButton = E('button', { 'class': 'btn cbi-button cbi-button-negative' }, t('Force update', '强制更新'));
+	if (rpcError) {
+		updateButton.disabled = true;
+		forceButton.disabled = true;
+	}
 	updateButton.addEventListener('click', function() {
 		runRpcAction(updateButton, statusBox, function() { return callStartUpdate(false); }, t('Update scheduled.', '已调度更新。'), t('Update failed', '启动更新失败'));
 	});
 	forceButton.addEventListener('click', function() {
 		runRpcAction(forceButton, statusBox, function() { return callStartUpdate(true); }, t('Forced update scheduled.', '已调度强制更新。'), t('Forced update failed', '启动强制更新失败'));
 	});
-	return E('div', { 'class': 'agh-action' }, [
-		E('h3', {}, t('Core Update', '核心更新')),
-		E('p', {}, t('Trigger the updater through rpcd and follow progress on the Runtime Log page.', '通过 rpcd 触发更新，并到运行日志页面查看进度。')),
+	return E('div', { 'class': 'agh-action agh-action-update' }, [
+		actionHeader(t('Version Update', '版本更新'), t('Core Version Update', '核心版本更新')),
+		E('p', {}, t('Queue a core upgrade task through rpcd and move to the log page when you need to track output.', '通过 rpcd 调度核心升级任务；需要查看执行输出时，可直接切换到运行日志页面。')),
 		E('div', { 'class': 'agh-row' }, [
 			updateButton,
 			forceButton,
@@ -233,44 +256,55 @@ function updateCard(statusBox) {
 	]);
 }
 
-function linksCard(channelSelect, archSelect, linksBox, statusBox) {
+function linksCard(channelSelect, archSelect, linksBox, rpcError) {
+	var statusBox = createStatusBox(rpcError ? actionError(rpcError, t('RPC backend unavailable', 'RPC 后端不可用')) : t('Ready.', '就绪。'));
 	var saveButton = E('button', { 'class': 'btn cbi-button cbi-button-action' }, t('Save source', '保存源'));
+	if (rpcError)
+		saveButton.disabled = true;
 	saveButton.addEventListener('click', function() {
 		runRpcAction(saveButton, statusBox, function() { return callSetLinks(linksBox.value, channelSelect.value, archSelect.value); }, t('Download source saved.', '下载源已保存。'), t('Saving download source failed', '保存下载源失败'));
 	});
-	return E('div', { 'class': 'agh-action' }, [
-		E('h3', {}, t('Download Source', '下载源')),
-		E('p', {}, t('Choose release channel and architecture; custom edits remain supported.', '选择发布通道和下载架构，也保留自定义地址能力。')),
+	return E('div', { 'class': 'agh-action agh-action-links' }, [
+		actionHeader(t('Source', '源设置'), t('Download Sources', '下载源与架构')),
+		E('p', {}, t('Choose a release channel, confirm the target architecture, or keep a fully custom source list when needed.', '可选择发布通道、确认目标架构，也可以继续维护完整的自定义下载源列表。')),
 		E('div', { 'class': 'agh-row' }, [ channelSelect, archSelect, saveButton ]),
-		linksBox
+		linksBox,
+		statusBox
 	]);
 }
 
-function passwordCard(statusBox) {
+
+function passwordCard() {
+	var statusBox = createStatusBox(t('Generate a hash and it will be filled into the password field below.', '生成哈希后会自动写入下方密码字段。'));
 	var input = E('input', { type: 'password', placeholder: t('New web password', '新的网页密码') });
-	return E('div', { 'class': 'agh-action' }, [
-		E('h3', {}, t('Password Helper', '密码助手')),
-		E('p', {}, t('Generate bcrypt hash and paste it into the hash field below, then Save & Apply.', '生成 bcrypt 哈希并填入下方 hash 字段，然后保存并应用。')),
-		E('div', { 'class': 'agh-row' }, [ input, E('button', { 'class': 'btn cbi-button', 'click': function() { ensureBcrypt().then(function() { var bcrypt = window.TwinBcrypt || (window.dcodeIO && window.dcodeIO.bcrypt); var hash = bcrypt && bcrypt.hashSync ? bcrypt.hashSync(input.value || '', 10) : ''; var target = document.querySelector('[data-name="hashpass"] input'); if (target && hash) target.value = hash; statusBox.textContent = hash ? t('Hash generated.', '哈希已生成。') : t('bcrypt library unavailable.', 'bcrypt 库不可用。'); }); } }, t('Generate hash', '生成哈希')) ])
+	return E('div', { 'class': 'agh-action agh-action-password' }, [
+		actionHeader(t('Security', '安全'), t('Password Hash Helper', '密码哈希助手')),
+		E('p', {}, t('Generate a bcrypt hash for the AdGuard Home web console password and write it into the hash field automatically.', '为 AdGuard Home 后台密码生成 bcrypt 哈希，并自动写入下方的哈希字段。')),
+		E('div', { 'class': 'agh-row' }, [ input, E('button', { 'class': 'btn cbi-button', 'click': function() { ensureBcrypt().then(function() { var bcrypt = window.TwinBcrypt || (window.dcodeIO && window.dcodeIO.bcrypt); var hash = bcrypt && bcrypt.hashSync ? bcrypt.hashSync(input.value || '', 10) : ''; var target = document.querySelector('[data-name="hashpass"] input'); if (target && hash) { target.value = hash; statusBox.textContent = t('Hash generated and written into the password field.', '哈希已生成，并已写入密码字段。'); } else { statusBox.textContent = t('bcrypt library unavailable or hash generation failed.', 'bcrypt 库不可用，或哈希生成失败。'); } }); } }, t('Generate hash', '生成哈希')) ]),
+		statusBox
 	]);
 }
 
-function gfwCard(statusBox) {
+function gfwCard(rpcError) {
+	var statusBox = createStatusBox(rpcError ? actionError(rpcError, t('RPC backend unavailable', 'RPC 后端不可用')) : t('Ready.', '就绪。'));
 	function button(action, text, label) {
 		var node = E('button', { 'class': 'btn cbi-button' }, text);
+		if (rpcError)
+			node.disabled = true;
 		node.addEventListener('click', function() {
 			runRpcAction(node, statusBox, function() { return callGfwAction(action); }, label, t('GFW action failed', 'GFW 操作失败'));
 		});
 		return node;
 	}
-	return E('div', { 'class': 'agh-action' }, [
-		E('h3', {}, t('GFW Rules', 'GFW 规则')),
-		E('p', {}, t('Keep legacy gfwlist and ipset workflows, exposed as compact action buttons.', '保留旧版 gfwlist 和 ipset 工作流，并改为紧凑操作按钮。')),
+	return E('div', { 'class': 'agh-action agh-action-gfw' }, [
+		actionHeader(t('Rules', '规则'), t('GFW Rule Tools', 'GFW 规则工具')),
+		E('p', {}, t('Keep legacy gfwlist and ipset workflows available as compact maintenance tools for add and cleanup actions.', '保留旧版 gfwlist 与 ipset 工作流，并用紧凑的维护按钮完成添加和清理操作。')),
 		E('div', { 'class': 'agh-row' }, [
 			button('add', t('Add list', '添加列表'), t('GFW list task started.', 'GFW 列表任务已启动。')),
 			button('del', t('Delete list', '删除列表'), t('GFW list delete task started.', 'GFW 列表删除任务已启动。')),
 			button('ipset_add', t('Add ipset', '添加 ipset'), t('GFW ipset task started.', 'GFW ipset 任务已启动。')),
 			button('ipset_del', t('Delete ipset', '删除 ipset'), t('GFW ipset delete task started.', 'GFW ipset 删除任务已启动。'))
-		])
+		]),
+		statusBox
 	]);
 }

@@ -40,6 +40,16 @@ function text(value, fallback) {
 	return value || fallback || '-';
 }
 
+function controlPanelUrl(status) {
+	var port = parseInt(status && status.httpport, 10);
+	var host = window.location.hostname || '127.0.0.1';
+	if (host.indexOf(':') >= 0 && host.charAt(0) !== '[')
+		host = '[' + host + ']';
+	if (!(port > 0 && port < 65536))
+		port = 3000;
+	return 'http://' + host + ':' + port + '/';
+}
+
 var style = [
 	'.agh-page{display:grid;gap:18px;color:#203042}',
 	'.agh-shell{position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(135deg,#143f46 0%,#1f6a5d 52%,#7d6828 100%);box-shadow:0 20px 42px rgba(15,38,48,.16)}',
@@ -52,6 +62,7 @@ var style = [
 	'.agh-quick{display:grid;gap:10px;align-content:start}',
 	'.agh-button-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}',
 	'.agh-button-row .btn{border-radius:12px}',
+	'.agh-panel-btn{background:rgba(255,255,255,.94)!important;color:#17373c!important;border-color:transparent!important;box-shadow:0 10px 22px rgba(18,39,47,.14)}',
 	'.agh-chip{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.13);color:#fff}',
 	'.agh-chip span{color:rgba(247,251,248,.72);font-size:12px}.agh-chip strong{font-size:15px}',
 	'.agh-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}',
@@ -84,6 +95,7 @@ return view.extend({
 				E('p', { 'class': 'agh-copy' }, t('Modern LuCI dashboard for service state, DNS redirect, core update readiness, YAML configuration and runtime logs. Designed for OpenWrt 24.10/25.12 and Argon theme.', '面向 OpenWrt 24.10/25.12 与 Argon 主题重新构建的现代 LuCI 控制台，集中展示服务状态、DNS 重定向、核心更新、YAML 配置和运行日志。')),
 				E('div', { 'class': 'agh-button-row' }, [
 					E('a', { 'class': 'btn cbi-button cbi-button-action', 'href': L.url('admin', 'services', 'adguardhome', 'settings') }, t('Open Settings', '打开设置')),
+					E('a', { 'class': 'btn cbi-button agh-panel-btn', 'href': controlPanelUrl(status), 'target': '_blank', 'rel': 'noopener noreferrer' }, t('Control Panel', '控制面板')),
 					E('a', { 'class': 'btn cbi-button', 'href': L.url('admin', 'services', 'adguardhome', 'yaml') }, t('Edit YAML', '编辑 YAML')),
 					E('a', { 'class': 'btn cbi-button', 'href': L.url('admin', 'services', 'adguardhome', 'log') }, t('View Logs', '查看日志'))
 				])
