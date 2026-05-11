@@ -1,0 +1,33 @@
+#!/bin/sh
+
+cleanup_legacy_frontend() {
+	for legacy_file in \
+		/usr/lib/lua/luci/controller/AdGuardHome.lua \
+		/usr/lib/lua/luci/model/cbi/AdGuardHome/base.lua \
+		/usr/lib/lua/luci/model/cbi/AdGuardHome/log.lua \
+		/usr/lib/lua/luci/model/cbi/AdGuardHome/manual.lua \
+		/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_check.htm \
+		/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_chpass.htm \
+		/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_status.htm \
+		/usr/lib/lua/luci/view/AdGuardHome/log.htm \
+		/usr/lib/lua/luci/view/AdGuardHome/yamleditor.htm
+	do
+		rm -f "$legacy_file"
+	done
+	rmdir /usr/lib/lua/luci/model/cbi/AdGuardHome 2>/dev/null
+	rmdir /usr/lib/lua/luci/view/AdGuardHome 2>/dev/null
+}
+
+cleanup_legacy_frontend
+
+uci -q batch <<-EOF >/dev/null 2>&1
+	delete ucitrack.@AdGuardHome[-1]
+	add ucitrack AdGuardHome
+	set ucitrack.@AdGuardHome[-1].init=AdGuardHome
+	commit ucitrack
+	delete AdGuardHome.AdGuardHome.ucitracktest
+EOF
+
+rm -rf /tmp/luci-modulecache/ /var/luci-modulecache/
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* /var/luci-indexcache.* 2>/dev/null
+exit 0
