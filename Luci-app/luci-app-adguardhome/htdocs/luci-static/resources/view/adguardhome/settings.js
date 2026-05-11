@@ -103,6 +103,23 @@ function addStatusNotice(node, type, text) {
 	node.textContent = text;
 }
 
+function isMissingRpcMethod(err) {
+	var message = err && err.message ? String(err.message) : '';
+
+	return /Object not found/i.test(message);
+}
+
+function explainUpdateError(err) {
+	if (isMissingRpcMethod(err)) {
+		return t(
+			'The installed rpcd object is still the old luci.adguardhome version and does not export startUpdate yet. Restart rpcd or reinstall this package, then refresh LuCI.',
+			'当前设备上的 rpcd 仍在使用旧版 luci.adguardhome 对象，还没有导出 startUpdate。请重启 rpcd 或重新安装当前软件包，然后刷新 LuCI。'
+		);
+	}
+
+	return err && err.message ? err.message : t('Unknown error', '未知错误');
+}
+
 function loadScript(url, id) {
 	return new Promise(function(resolve, reject) {
 		var existing = document.getElementById(id);
@@ -159,14 +176,15 @@ var pageStyle = [
 	'.adh-summary-card { padding:18px; border-radius:16px; background:rgba(255,255,255,.74); border:1px solid var(--adh-line); }',
 	'.adh-summary-card strong { display:block; margin-top:8px; font-size:1.18rem; color:#121a46; }',
 	'.adh-summary-card span { display:block; font-size:12px; line-height:1.6; color:var(--adh-muted); }',
-	'.adh-settings-page .cbi-map { margin:0; border-radius:18px; border:1px solid var(--adh-line); box-shadow:0 12px 30px rgba(35,48,85,.06); overflow:hidden; background:var(--adh-panel); }',
+	'.adh-settings-page .cbi-map { position:relative; z-index:2; margin:0; border-radius:18px; border:1px solid var(--adh-line); box-shadow:0 12px 30px rgba(35,48,85,.06); overflow:visible; background:var(--adh-panel); }',
 	'.adh-settings-page .cbi-map > h2 { margin:0; padding:22px 24px 0; font-size:1.36rem; color:#16363e; }',
 	'.adh-settings-page .cbi-map > .cbi-map-descr { padding:10px 24px 0; color:var(--adh-muted); line-height:1.75; }',
 	'.adh-settings-page .cbi-section { margin:0; border:0; box-shadow:none; background:transparent; }',
-	'.adh-settings-page .cbi-section-node { padding-top:6px; background:transparent; }',
+	'.adh-settings-page .cbi-section-node { position:relative; z-index:2; padding-top:6px; background:transparent; overflow:visible; }',
 	'.adh-settings-page .cbi-value { padding:14px 20px; border-top:1px solid rgba(22,54,62,.08); }',
+	'.adh-settings-page .cbi-dropdown, .adh-settings-page .cbi-dropdown ul { z-index:40; }',
 	'.adh-settings-page input[type="text"], .adh-settings-page input[type="password"], .adh-settings-page textarea, .adh-settings-page select { border-radius:12px; border-color:rgba(22,54,62,.16); box-shadow:none; }',
-	'.adh-action-grid { display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }',
+	'.adh-action-grid { position:relative; z-index:1; display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }',
 	'.adh-action-card { padding:20px; border-radius:18px; border:1px solid var(--adh-line); background:var(--adh-panel); box-shadow:0 12px 30px rgba(35,48,85,.06); }',
 	'.adh-action-card h3 { margin:0; font-size:1.15rem; color:#16363e; }',
 	'.adh-action-card p { margin:10px 0 0; line-height:1.7; color:var(--adh-muted); }',
@@ -312,7 +330,7 @@ return view.extend({
 
 				addStatusNotice(updateStatus, 'success', t('Standard update scheduled. Open Runtime Log to observe progress.', '标准更新已调度，可到运行日志页观察输出。'));
 			}).catch(function(err) {
-				addStatusNotice(updateStatus, 'error', t('Failed to start update: ', '启动更新失败：') + err.message);
+				addStatusNotice(updateStatus, 'error', t('Failed to start update: ', '启动更新失败：') + explainUpdateError(err));
 			});
 		});
 
@@ -325,7 +343,7 @@ return view.extend({
 
 				addStatusNotice(updateStatus, 'success', t('Forced update scheduled. Open Runtime Log to observe progress.', '强制更新已调度，可到运行日志页观察输出。'));
 			}).catch(function(err) {
-				addStatusNotice(updateStatus, 'error', t('Failed to start forced update: ', '启动强制更新失败：') + err.message);
+				addStatusNotice(updateStatus, 'error', t('Failed to start forced update: ', '启动强制更新失败：') + explainUpdateError(err));
 			});
 		});
 

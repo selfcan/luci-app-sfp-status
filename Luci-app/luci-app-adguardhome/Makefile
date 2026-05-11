@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-adguardhome
 PKG_VERSION:=1.8
-PKG_RELEASE:=22
+PKG_RELEASE:=25
 
 LUCI_DEPENDS:=+luci-base +rpcd +!wget&&!curl:wget
 
@@ -85,7 +85,9 @@ define Package/luci-app-adguardhome/postinst
 	fi
 	rm -rf /tmp/luci-modulecache/ /var/luci-modulecache/
 	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* /var/luci-indexcache.* 2>/dev/null
-	[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1
+	if [ -x /etc/init.d/rpcd ]; then
+		/etc/init.d/rpcd restart >/dev/null 2>&1
+	fi
 exit 0
 endef
 

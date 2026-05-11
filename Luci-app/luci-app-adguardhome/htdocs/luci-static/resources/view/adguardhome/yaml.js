@@ -46,6 +46,103 @@ function t(message, fallback) {
 	return fallback;
 }
 
+function errorMessage(err) {
+	return err && err.message ? err.message : t('Unknown error', '未知错误');
+}
+
+function isMissingRpcObject(err) {
+	return /Object not found/i.test(errorMessage(err));
+}
+
+function bundledTemplateContent() {
+	return [
+		'# Local fallback template used when rpcd template generation is unavailable.',
+		'bind_host: 0.0.0.0',
+		'bind_port: 3000',
+		'users:',
+		'- name: root',
+		'  password: ""',
+		'language: ""',
+		'rlimit_nofile: 0',
+		'dns:',
+		'  bind_host: 0.0.0.0',
+		'  port: 5553',
+		'  statistics_interval: 1',
+		'  protection_enabled: true',
+		'  filtering_enabled: true',
+		'  filters_update_interval: 24',
+		'  blocking_mode: nxdomain',
+		'  blocked_response_ttl: 10',
+		'  querylog_enabled: false',
+		'  querylog_interval: 1',
+		'  ratelimit: 0',
+		'  ratelimit_whitelist: []',
+		'  refuse_any: false',
+		'  bootstrap_dns:',
+		'  - 223.5.5.5',
+		'  - 119.29.29.29',
+		'  all_servers: false',
+		'  allowed_clients: []',
+		'  disallowed_clients: []',
+		'  blocked_hosts: []',
+		'  parental_block_host: ""',
+		'  safebrowsing_block_host: ""',
+		'  blocked_services: []',
+		'  cache_size: 4194304',
+		'  parental_sensitivity: 13',
+		'  parental_enabled: false',
+		'  safesearch_enabled: false',
+		'  safebrowsing_enabled: false',
+		'  safebrowsing_cache_size: 1048576',
+		'  safesearch_cache_size: 1048576',
+		'  parental_cache_size: 1048576',
+		'  cache_time: 30',
+		'  rewrites: []',
+		'  upstream_dns:',
+		'  - 223.5.5.5',
+		'  - https://dns.alidns.com/dns-query',
+		'tls:',
+		'  enabled: false',
+		'  server_name: ""',
+		'  force_https: false',
+		'  port_https: 443',
+		'  port_dns_over_tls: 853',
+		'  certificate_chain: ""',
+		'  private_key: ""',
+		'  certificate_path: ""',
+		'  private_key_path: ""',
+		'filters:',
+		'- enabled: true',
+		'  url: https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt',
+		'  name: AdGuard Simplified Domain Names filter',
+		'  id: 1',
+		'- enabled: true',
+		'  url: https://adaway.org/hosts.txt',
+		'  name: AdAway',
+		'  id: 2',
+		'user_rules: []',
+		'dhcp:',
+		'  enabled: false',
+		'  interface_name: ""',
+		'  gateway_ip: ""',
+		'  subnet_mask: ""',
+		'  range_start: ""',
+		'  range_end: ""',
+		'  lease_duration: 86400',
+		'  icmp_timeout_msec: 1000',
+		'clients: []',
+		'log_file: ""',
+		'verbose: false',
+		'schema_version: 5'
+	].join('\n');
+}
+
+function applyBundledTemplate(setValue, updateSource, statusBox, message) {
+	setValue(bundledTemplateContent());
+	updateSource(t('Bundled template', '内置模板'));
+	addStatusNotice(statusBox, 'warning', message);
+}
+
 function addStatusNotice(node, type, text) {
 	node.className = 'adh-inline-status adh-inline-status-' + type;
 	node.textContent = text;
@@ -186,11 +283,33 @@ return view.extend({
 		templateBtn.addEventListener('click', function(ev) {
 			ev.preventDefault();
 			callGetTemplateConfig().then(function(result) {
-				setValue(result.content || '');
+				var content = result && typeof result.content === 'string' ? result.content : '';
+
+				if (!content.trim()) {
+					applyBundledTemplate(
+						setValue,
+						updateSource,
+						statusBox,
+						t('The router template file is missing or empty. Loaded the bundled fallback template instead. Review upstream DNS values before applying it.', '路由器上的模板文件缺失或为空，已改为载入内置回退模板。应用前请先检查上游 DNS 配置。')
+					);
+					return;
+				}
+
+				setValue(content);
 				updateSource(t('Generated template', '生成模板'));
 				addStatusNotice(statusBox, 'warning', t('Template content loaded into the editor. It is not active until you validate and apply it.', '模板内容已经载入编辑器，只有在你校验并应用之后才会真正生效。'));
 			}).catch(function(err) {
-				addStatusNotice(statusBox, 'error', t('Failed to load template: ', '载入模板失败：') + err.message);
+				if (isMissingRpcObject(err)) {
+					applyBundledTemplate(
+						setValue,
+						updateSource,
+						statusBox,
+						t('The rpcd template endpoint is unavailable on this device. Loaded the bundled fallback template instead. Review upstream DNS values before applying it, then upgrade or reinstall the package to restore backend template generation.', '当前设备上的 rpcd 模板接口不可用，已改为载入内置回退模板。应用前请先检查上游 DNS 配置，然后升级或重装软件包以恢复后端模板生成功能。')
+					);
+					return;
+				}
+
+				addStatusNotice(statusBox, 'error', t('Failed to load template: ', '载入模板失败：') + errorMessage(err));
 			});
 		});
 
