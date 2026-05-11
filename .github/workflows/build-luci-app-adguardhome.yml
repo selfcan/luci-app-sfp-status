@@ -38,10 +38,12 @@ on:
     paths:
       - '.github/workflows/build-luci-app-adguardhome.yml'
       - 'luci-app-adguardhome/**'
+      - 'Luci-app/luci-app-adguardhome/**'
   pull_request:
     paths:
       - '.github/workflows/build-luci-app-adguardhome.yml'
       - 'luci-app-adguardhome/**'
+      - 'Luci-app/luci-app-adguardhome/**'
 
 permissions:
   contents: write
@@ -130,6 +132,7 @@ jobs:
           for candidate in \
             "$GITHUB_WORKSPACE/luci-app-adguardhome/luci-app-adguardhome" \
             "$GITHUB_WORKSPACE/Luci-app/luci-app-adguardhome/luci-app-adguardhome" \
+            "$GITHUB_WORKSPACE/Luci-app/luci-app-adguardhome" \
             "$GITHUB_WORKSPACE/luci-app-adguardhome" \
             "$GITHUB_WORKSPACE"
           do
