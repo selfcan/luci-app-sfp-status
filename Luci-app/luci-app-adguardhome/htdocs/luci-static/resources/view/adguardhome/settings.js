@@ -56,6 +56,24 @@ function t(message, fallback) {
 	return fallback;
 }
 
+function ensureObject(value) {
+	return (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+}
+
+function ensureArray(value) {
+	return Array.isArray(value) ? value : [];
+}
+
+function ensureConfigSection() {
+	var sections = uci.sections('AdGuardHome', 'AdGuardHome') || [];
+	var hasNamedSection = sections.some(function(section) {
+		return section && section['.name'] === 'AdGuardHome';
+	});
+
+	if (!hasNamedSection)
+		uci.add('AdGuardHome', 'AdGuardHome', 'AdGuardHome');
+}
+
 function addStatusNotice(node, type, text) {
 	node.className = 'adh-inline-status adh-inline-status-' + type;
 	node.textContent = text;
@@ -182,6 +200,9 @@ return view.extend({
 	},
 
 	renderActionCards: function(mapNode, status, meta) {
+		status = ensureObject(status);
+		meta = ensureObject(meta);
+
 		var gfwStatus = E('div', { 'class': 'adh-inline-status adh-inline-status-info' }, meta.gfw_added ? t('The gfwlist block is currently injected into the YAML config.', '当前 YAML 配置中已注入 gfwlist 规则块。') : t('The gfwlist block has not been injected yet.', '当前 YAML 配置尚未注入 gfwlist 规则块。'));
 		var linksBox = E('textarea', { rows: 7, wrap: 'soft' }, [ meta.download_links || '' ]);
 		var linksStatus = E('div', { 'class': 'adh-inline-status adh-inline-status-info' }, t('Mirror list changes are written to links.txt and used by the core updater.', '这里的镜像列表会直接写入 links.txt，并被核心更新脚本读取。'));
@@ -312,15 +333,18 @@ return view.extend({
 	},
 
 	render: function(data) {
-		var status = data[1] || {};
-		var meta = data[2] || {};
+		var status = ensureObject(data && data[1]);
+		var meta = ensureObject(data && data[2]);
+		var backupChoices = ensureArray(meta.backup_choices).filter(function(choice) {
+			return choice != null && String(choice) !== '';
+		});
+
+		ensureConfigSection();
+
 		var m = new form.Map('AdGuardHome', t('AdGuard Home Settings', 'AdGuard Home 设置中心'), t('These options stay in UCI and are now managed by a modern LuCI form. File-backed and script-backed operations remain on dedicated action cards below.', '这些选项继续保存在 UCI 中，并改由 modern LuCI 表单维护。文件型和脚本型动作则放在下方的独立操作卡片里。'));
-		var s = m.section(form.TypedSection, 'AdGuardHome', t('Base service settings', '基础服务设置'));
+		var s = m.section(form.NamedSection, 'AdGuardHome', 'AdGuardHome', t('Base service settings', '基础服务设置'));
 		var o;
 		var backupPath;
-
-		s.anonymous = true;
-		s.addremove = false;
 
 		o = s.option(form.Flag, 'enabled', t('Enable service', '启用服务'));
 		o.rmempty = false;
@@ -387,13 +411,13 @@ return view.extend({
 
 		o = s.option(form.MultiValue, 'backupfile', t('Backup workdir files on shutdown', '关机时备份工作目录文件'));
 		o.widget = 'checkbox';
-		(meta.backup_choices || []).forEach(function(choice) {
+		backupChoices.forEach(function(choice) {
 			o.value(choice, choice);
 		});
 
 		backupPath = s.option(form.Value, 'backupwdpath', t('Backup workdir path', '工作目录备份路径'));
 		backupPath.placeholder = '/etc/config/adGuardConfig/workspace';
-		(meta.backup_choices || []).forEach(function(choice) {
+		backupChoices.forEach(function(choice) {
 			backupPath.depends('backupfile', choice);
 		});
 
