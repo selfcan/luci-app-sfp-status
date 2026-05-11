@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-adguardhome
 PKG_VERSION:=1.8
-PKG_RELEASE:=1
+PKG_RELEASE:=3
 
 LUCI_TITLE:=LuCI app for AdGuard Home
 LUCI_DESCRIPTION:=Modern LuCI dashboard for AdGuard Home
@@ -63,7 +63,10 @@ if [ -z "$$IPKG_INSTROOT" ]; then
 	[ -x /etc/init.d/AdGuardHome ] && /etc/init.d/AdGuardHome enable >/dev/null 2>&1
 	rm -rf /tmp/luci-modulecache/ /var/luci-modulecache/
 	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* /var/luci-indexcache.* 2>/dev/null
-	[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1
+	if [ -x /etc/init.d/rpcd ]; then
+		/etc/init.d/rpcd reload >/dev/null 2>&1 || true
+		( sleep 1; /etc/init.d/rpcd restart >/dev/null 2>&1 ) &
+	fi
 fi
 exit 0
 endef

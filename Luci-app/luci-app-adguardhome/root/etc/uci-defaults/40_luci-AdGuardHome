@@ -25,5 +25,8 @@ EOF
 mkdir -p /etc/config/adGuardConfig/workspace 2>/dev/null
 rm -rf /tmp/luci-modulecache/ /var/luci-modulecache/
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* /var/luci-indexcache.* 2>/dev/null
-[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1
+if [ -x /etc/init.d/rpcd ]; then
+	/etc/init.d/rpcd reload >/dev/null 2>&1 || true
+	( sleep 1; /etc/init.d/rpcd restart >/dev/null 2>&1 ) &
+fi
 exit 0

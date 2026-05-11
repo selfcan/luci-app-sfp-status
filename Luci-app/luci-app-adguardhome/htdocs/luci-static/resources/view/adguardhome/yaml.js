@@ -18,6 +18,21 @@ function t(message, fallback) {
 	return translated !== message || !fallback || !hasChineseLocale() ? translated : fallback;
 }
 
+function actionError(err, fallback) {
+	var message = err && (err.message || err.toString && err.toString()) || '';
+	if (/Object not found/i.test(message))
+		return t('The luci.adguardhome rpcd object is not available. Reinstall this package or restart rpcd, then refresh LuCI.', '当前设备没有导出 luci.adguardhome rpcd 后端对象。请重新安装当前软件包或重启 rpcd，然后刷新 LuCI。');
+	if (/Method not found/i.test(message))
+		return t('The rpcd backend is outdated and does not provide YAML actions. Reinstall this package or restart rpcd, then refresh LuCI.', '当前设备上的 rpcd 后端版本过旧，未提供 YAML 相关操作。请重新安装当前软件包或重启 rpcd，然后刷新 LuCI。');
+	return fallback + (message ? ': ' + message : '');
+}
+
+function safeCall(promise, fallback) {
+	return promise.catch(function(err) {
+		return Object.assign({ _rpc_error: err }, fallback || {});
+	});
+}
+
 function ensureStyle(src, id) {
 	if (document.getElementById(id))
 		return;
@@ -56,33 +71,71 @@ var style = [
 	'.agh-hero p{max-width:72rem;margin:0;color:rgba(247,251,248,.86);font-size:14px;line-height:1.75}',
 	'.agh-card{border-radius:22px;background:#fff;border:1px solid rgba(22,54,62,.1);box-shadow:0 12px 30px rgba(17,48,54,.08);overflow:hidden}',
 	'.agh-toolbar{display:flex;gap:10px;flex-wrap:wrap;padding:16px 18px;border-bottom:1px solid rgba(22,54,62,.08);background:#f7faf9}.agh-toolbar .btn{border-radius:12px}',
+	'.agh-toolbar .btn[disabled]{opacity:.6;cursor:not-allowed}',
 	'.agh-editor{padding:0}.agh-editor textarea{width:100%;min-height:620px;border:0;border-radius:0;font-family:monospace;font-size:13px;box-sizing:border-box}',
 	'.CodeMirror{height:auto;min-height:620px;font-size:13px;line-height:1.65}.CodeMirror-scroll{min-height:620px}',
 	'.agh-status{padding:12px 18px;border-top:1px solid rgba(22,54,62,.08);background:#f7faf9;color:#51606f;font-size:12px;line-height:1.55;white-space:pre-wrap}',
+	'.agh-alert{padding:16px 18px;border-bottom:1px solid rgba(22,54,62,.08);background:#fff4df;color:#805718;line-height:1.7}',
 	'@media(max-width:720px){.agh-hero{padding:20px}.agh-hero h2{font-size:24px!important}.CodeMirror,.CodeMirror-scroll,.agh-editor textarea{min-height:520px}}'
 ].join('\n');
 
 return view.extend({
 	load: function() {
-		return callGetYaml();
+		return safeCall(callGetYaml(), { content: '', test_log: '' });
 	},
 	render: function(data) {
+		var rpcError = data._rpc_error;
 		var textarea = E('textarea', {}, data.content || '');
-		var statusBox = E('div', { 'class': 'agh-status' }, data.test_log || t('Ready.', '就绪。'));
+		var statusBox = E('div', { 'class': 'agh-status' }, rpcError ? actionError(rpcError, t('YAML backend unavailable', 'YAML 后端不可用')) : (data.test_log || t('Ready.', '就绪。')));
 		var editor = null;
+		var saveButton = E('button', { 'class': 'btn cbi-button cbi-button-action', 'disabled': rpcError ? 'disabled' : null }, t('Save & Apply', '保存并应用'));
+		var templateButton = E('button', { 'class': 'btn cbi-button', 'disabled': rpcError ? 'disabled' : null }, t('Use template', '使用模板'));
+		var discardButton = E('button', { 'class': 'btn cbi-button', 'disabled': rpcError ? 'disabled' : null }, t('Discard temporary', '丢弃临时修改'));
 
 		function value() { return editor ? editor.getValue() : textarea.value; }
 		function setValue(content) { editor ? editor.setValue(content || '') : textarea.value = content || ''; }
 		function setStatus(message) { statusBox.textContent = message; }
 
+		if (rpcError)
+			textarea.setAttribute('readonly', 'readonly');
+
+		saveButton.addEventListener('click', function() {
+			callSaveYaml(value()).then(function(res) {
+				setStatus(res.ok ? t('YAML saved and service reload scheduled.', 'YAML 已保存，并已调度服务重载。') : (res.error || t('Validation failed.', '校验失败。')));
+			}).catch(function(err) {
+				setStatus(actionError(err, t('Saving YAML failed', '保存 YAML 失败')));
+			});
+		});
+
+		templateButton.addEventListener('click', function() {
+			callGetTemplate().then(function(res) {
+				setValue(res.content || '');
+				setStatus(t('Template loaded.', '模板已载入。'));
+			}).catch(function(err) {
+				setStatus(actionError(err, t('Loading template failed', '加载模板失败')));
+			});
+		});
+
+		discardButton.addEventListener('click', function() {
+			callDiscardYaml().then(function() {
+				return callGetYaml();
+			}).then(function(res) {
+				setValue(res.content || '');
+				setStatus(t('Temporary YAML changes discarded.', '临时 YAML 修改已丢弃。'));
+			}).catch(function(err) {
+				setStatus(actionError(err, t('Discarding YAML changes failed', '丢弃 YAML 修改失败')));
+			});
+		});
+
 		var node = E('div', { 'class': 'agh-yaml' }, [
 			E('style', {}, style),
 			E('section', { 'class': 'agh-hero' }, [ E('h2', {}, t('YAML Editor', 'YAML 编辑器')), E('p', {}, t('Edit the file-backed AdGuard Home YAML configuration with template generation, validation and apply through rpcd.', '通过 rpcd 编辑文件型 AdGuard Home YAML 配置，支持模板生成、校验和应用。')) ]),
 			E('section', { 'class': 'agh-card' }, [
+				rpcError ? E('div', { 'class': 'agh-alert' }, actionError(rpcError, t('YAML backend unavailable', 'YAML 后端不可用'))) : '',
 				E('div', { 'class': 'agh-toolbar' }, [
-					E('button', { 'class': 'btn cbi-button cbi-button-action', 'click': function() { callSaveYaml(value()).then(function(res) { setStatus(res.ok ? t('YAML saved and service reload scheduled.', 'YAML 已保存，并已调度服务重载。') : (res.error || t('Validation failed.', '校验失败。'))); }); } }, t('Save & Apply', '保存并应用')),
-					E('button', { 'class': 'btn cbi-button', 'click': function() { callGetTemplate().then(function(res) { setValue(res.content || ''); setStatus(t('Template loaded.', '模板已载入。')); }); } }, t('Use template', '使用模板')),
-					E('button', { 'class': 'btn cbi-button', 'click': function() { callDiscardYaml().then(function() { return callGetYaml(); }).then(function(res) { setValue(res.content || ''); setStatus(t('Temporary YAML changes discarded.', '临时 YAML 修改已丢弃。')); }); } }, t('Discard temporary', '丢弃临时修改'))
+					saveButton,
+					templateButton,
+					discardButton
 				]),
 				E('div', { 'class': 'agh-editor' }, textarea),
 				statusBox

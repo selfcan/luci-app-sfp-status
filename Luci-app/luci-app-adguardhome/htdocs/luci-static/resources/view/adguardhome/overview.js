@@ -16,6 +16,21 @@ function t(message, fallback) {
 	return translated !== message || !fallback || !hasChineseLocale() ? translated : fallback;
 }
 
+function actionError(err, fallback) {
+	var message = err && (err.message || err.toString && err.toString()) || '';
+	if (/Object not found/i.test(message))
+		return t('The luci.adguardhome rpcd object is not available. Reinstall this package or restart rpcd, then refresh LuCI.', '当前设备没有导出 luci.adguardhome rpcd 后端对象。请重新安装当前软件包或重启 rpcd，然后刷新 LuCI。');
+	if (/Method not found/i.test(message))
+		return t('The rpcd backend is outdated and does not provide this view data. Reinstall this package or restart rpcd, then refresh LuCI.', '当前设备上的 rpcd 后端版本过旧，未提供此页面所需数据。请重新安装当前软件包或重启 rpcd，然后刷新 LuCI。');
+	return fallback + (message ? ': ' + message : '');
+}
+
+function safeCall(promise, fallback) {
+	return promise.catch(function(err) {
+		return Object.assign({ _rpc_error: err }, fallback || {});
+	});
+}
+
 function yes(value) {
 	return value === true || value === 1 || value === '1';
 }
@@ -43,6 +58,7 @@ var style = [
 	'.agh-card{padding:18px;border-radius:20px;background:#fff;border:1px solid rgba(22,54,62,.1);box-shadow:0 12px 30px rgba(17,48,54,.08)}',
 	'.agh-label{font-size:12px;line-height:1.5;color:#667084}.agh-value{margin-top:10px;font-size:24px;line-height:1.15;font-weight:700;color:#17373c;word-break:break-word}',
 	'.agh-ok{color:#1c8b58}.agh-warn{color:#b27716}.agh-bad{color:#c94d5c}',
+	'.agh-alert{padding:16px 18px;border-radius:18px;background:#fff4df;border:1px solid rgba(178,119,22,.2);color:#805718;box-shadow:0 10px 26px rgba(178,119,22,.08);line-height:1.7}',
 	'.agh-paths{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.agh-path{padding:14px;border-radius:16px;background:#f7faf9;border:1px solid rgba(22,54,62,.08);min-width:0}.agh-path span{display:block;font-size:12px;color:#667084}.agh-path code{display:block;margin-top:8px;white-space:normal;word-break:break-all;color:#17373c}',
 	'@media(max-width:1080px){.agh-hero,.agh-grid,.agh-paths{grid-template-columns:1fr 1fr}.agh-quick{grid-column:1/-1}}',
 	'@media(max-width:720px){.agh-hero,.agh-grid,.agh-paths{grid-template-columns:1fr}.agh-hero{padding:20px}.agh-title{font-size:24px!important}}'
@@ -50,14 +66,17 @@ var style = [
 
 return view.extend({
 	load: function() {
-		return callGetStatus();
+		return safeCall(callGetStatus(), {});
 	},
 	render: function(status) {
 		var root = E('div', { 'class': 'agh-page' });
+		var rpcError = status._rpc_error;
 		var state = yes(status.running) ? t('Running', '运行中') : t('Stopped', '未运行');
 		var stateClass = yes(status.running) ? 'agh-ok' : 'agh-bad';
 
 		root.appendChild(E('style', {}, style));
+		if (rpcError)
+			root.appendChild(E('section', { 'class': 'agh-alert' }, actionError(rpcError, t('Overview data unavailable', '概览数据不可用'))));
 		root.appendChild(E('section', { 'class': 'agh-shell' }, E('div', { 'class': 'agh-hero' }, [
 			E('div', {}, [
 				E('span', { 'class': 'agh-eyebrow' }, t('Network DNS Guard', '网络 DNS 防护')),
@@ -70,9 +89,9 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'agh-quick' }, [
-				E('div', { 'class': 'agh-chip' }, [ E('span', {}, t('Service', '服务')), E('strong', { 'class': stateClass }, state) ]),
+				E('div', { 'class': 'agh-chip' }, [ E('span', {}, t('Service', '服务')), E('strong', { 'class': rpcError ? 'agh-bad' : stateClass }, rpcError ? t('Backend missing', '后端缺失') : state) ]),
 				E('div', { 'class': 'agh-chip' }, [ E('span', {}, t('Core', '核心')), E('strong', { 'class': yes(status.core_ready) ? 'agh-ok' : 'agh-warn' }, yes(status.core_ready) ? text(status.version) : t('Missing', '缺失')) ]),
-				E('div', { 'class': 'agh-chip' }, [ E('span', {}, t('DNS Port', 'DNS 端口')), E('strong', {}, text(status.dns_port, '-')) ]),
+				E('div', { 'class': 'agh-chip' }, [ E('span', {}, t('DNS Port', 'DNS 端口')), E('strong', {}, text(status.dns_port, rpcError ? '?' : '-')) ]),
 				E('div', { 'class': 'agh-chip' }, [ E('span', {}, t('Redirect', '重定向')), E('strong', { 'class': yes(status.redirected) ? 'agh-ok' : '' }, yes(status.redirected) ? t('Active', '已启用') : text(status.redirect, 'none')) ])
 			])
 		])));
