@@ -1,0 +1,630 @@
+#!/bin/sh
+
+. "${IPKG_INSTROOT}/usr/share/libubox/jshn.sh"
+
+readonly CONFIG_NAME='AdGuardHome'
+readonly DEFAULT_BINPATH='/etc/config/adGuardConfig/AdGuardHome'
+readonly DEFAULT_CONFIGPATH='/etc/config/adGuardConfig/AdGuardHome.yaml'
+readonly DEFAULT_WORKDIR='/etc/config/adGuardConfig/workspace'
+readonly LINKS_FILE="${IPKG_INSTROOT}/usr/share/AdGuardHome/links.txt"
+readonly TEMPLATE_FILE="${IPKG_INSTROOT}/usr/share/AdGuardHome/AdGuardHome_template.yaml"
+readonly TEMP_CONFIG='/tmp/AdGuardHometmpconfig.yaml'
+readonly TEMP_TEST_LOG='/tmp/AdGuardHometest.log'
+readonly UPDATE_LOG='/tmp/AdGuardHome_update.log'
+readonly SYSLOG_TEMP='/tmp/AdGuardHometmp.log'
+readonly UPDATE_SCRIPT="${IPKG_INSTROOT}/usr/share/AdGuardHome/update_core.sh"
+readonly SYSLOG_SCRIPT="${IPKG_INSTROOT}/usr/share/AdGuardHome/getsyslog.sh"
+readonly GFW_SCRIPT="${IPKG_INSTROOT}/usr/share/AdGuardHome/gfw2adg.sh"
+readonly INIT_SCRIPT="${IPKG_INSTROOT}/etc/init.d/AdGuardHome"
+
+trim() {
+	printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+normalize_release_channel() {
+	case "$1" in
+		release|beta|github|custom)
+			printf '%s\n' "$1"
+			;;
+		*)
+			printf '%s\n' 'release'
+			;;
+	esac
+}
+
+normalize_download_arch() {
+	case "$1" in
+		auto|i386|x86_64|armv5|armv6|armv7|aarch64|mips|mips64|mipsel|mips64el|powerpc|powerpc64)
+			printf '%s\n' "$1"
+			;;
+		*)
+			printf '%s\n' 'auto'
+			;;
+	esac
+}
+
+get_option() {
+	local option="$1"
+	local fallback="$2"
+	local value
+
+	value=$(uci -q get "${CONFIG_NAME}.${CONFIG_NAME}.${option}" 2>/dev/null)
+	if [ -n "$value" ]; then
+		printf '%s\n' "$value"
+	else
+		printf '%s\n' "$fallback"
+	fi
+}
+
+is_true() {
+	case "$1" in
+		1|true|yes|on)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+json_add_bool() {
+	if is_true "$2"; then
+		json_add_boolean "$1" 1
+	else
+		json_add_boolean "$1" 0
+	fi
+}
+
+json_add_file_list() {
+	json_add_array "$1"
+	shift
+	for entry in "$@"; do
+		[ -n "$entry" ] || continue
+		json_add_string '' "$entry"
+	done
+	json_close_array
+}
+
+safe_read_file() {
+	[ -r "$1" ] || return 1
+	cat "$1" 2>/dev/null
+}
+
+tail_bytes() {
+	local file="$1"
+	local bytes="$2"
+
+	[ -r "$file" ] || return 1
+	tail -c "$bytes" "$file" 2>/dev/null
+}
+
+read_log_window() {
+	local file="$1"
+	local pos="$2"
+	local bytes="$3"
+	local size count
+
+	LOG_CONTENT=''
+	LOG_POS=0
+	LOG_SIZE=0
+
+	[ -r "$file" ] || return 1
+	size=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
+	case "$size" in
+		''|*[!0-9]*)
+			size=0
+			;;
+	esac
+	case "$pos" in
+		''|*[!0-9]*)
+			pos=0
+			;;
+	esac
+	case "$bytes" in
+		''|*[!0-9]*)
+			bytes=2048000
+			;;
+	esac
+	[ "$pos" -le "$size" ] 2>/dev/null || pos=0
+	count=$((size - pos))
+	[ "$count" -le "$bytes" ] 2>/dev/null || count="$bytes"
+
+	if [ "$count" -gt 0 ] 2>/dev/null; then
+		LOG_CONTENT=$(dd if="$file" bs=1 skip="$pos" count="$count" 2>/dev/null)
+		LOG_POS=$((pos + count))
+	else
+		LOG_POS="$size"
+	fi
+	LOG_SIZE="$size"
+}
+
+resolve_dns_port() {
+	local configpath="$1"
+
+	[ -r "$configpath" ] || return 1
+	awk '/^[[:space:]]*port:/{ print $2; exit }' "$configpath" 2>/dev/null
+}
+
+resolve_core_version() {
+	local binpath="$1"
+	local testtime version detected binmtime
+
+	[ -x "$binpath" ] || return 1
+
+	testtime=$(stat -c '%Y' "$binpath" 2>/dev/null)
+	binmtime=$(get_option binmtime 0)
+	version=$(trim "$(get_option version '')")
+
+	if [ "$testtime" != "$binmtime" ] || [ -z "$version" ]; then
+		detected=$("$binpath" -c /dev/null --check-config 2>&1 | grep -m 1 -E 'v[0-9.]+' -o)
+		version=$(trim "$detected")
+		if [ -n "$version" ]; then
+			uci -q set "${CONFIG_NAME}.${CONFIG_NAME}.version=$version"
+			uci -q set "${CONFIG_NAME}.${CONFIG_NAME}.binmtime=$testtime"
+			uci -q commit "$CONFIG_NAME"
+		fi
+	fi
+
+	[ -n "$version" ] || return 1
+	printf '%s\n' "$version"
+}
+
+read_backup_choices() {
+	local workdir="$1"
+	local seen=" filters stats.db querylog.json sessions.db "
+	local entry result='filters stats.db querylog.json sessions.db'
+
+	if [ -d "$workdir/data" ]; then
+		for entry in "$workdir"/data/*; do
+			[ -e "$entry" ] || continue
+			entry=${entry##*/}
+			case " $seen " in
+				*" $entry "*)
+					;;
+				*)
+					seen="$seen$entry "
+					result="$result $entry"
+					;;
+			esac
+		done
+	fi
+
+	printf '%s\n' "$result"
+}
+
+gfw_added() {
+	local configpath="$1"
+
+	grep -qm 1 'programadd' "$configpath" 2>/dev/null
+}
+
+build_template_config() {
+	local dns_lines='' cnt nameserver line
+
+	while IFS= read -r cnt; do
+		nameserver=$(printf '%s\n' "$cnt" | sed -n 's/^[^#]*nameserver[[:space:]]\+\([^[:space:]]\+\).*$/\1/p')
+		[ -n "$nameserver" ] || continue
+		dns_lines="$dns_lines  - $nameserver\n"
+	done < /tmp/resolv.conf.auto 2>/dev/null
+
+	[ -r "$TEMPLATE_FILE" ] || return 1
+
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in
+			'#bootstrap_dns'|'#upstream_dns')
+				printf '%b' "$dns_lines"
+				;;
+			*)
+				printf '%s\n' "$line"
+				;;
+		esac
+	done < "$TEMPLATE_FILE"
+}
+
+get_yaml_payload() {
+	local configpath="$1"
+	local source='template'
+	local content='' test_log=''
+
+	if [ -r "$TEMP_CONFIG" ]; then
+		source='temp'
+		content=$(safe_read_file "$TEMP_CONFIG")
+	elif [ -r "$configpath" ]; then
+		source='config'
+		content=$(safe_read_file "$configpath")
+	else
+		content=$(build_template_config)
+	fi
+
+	test_log=$(safe_read_file "$TEMP_TEST_LOG" 2>/dev/null)
+
+	json_init
+	json_add_string source "$source"
+	json_add_string content "$content"
+	json_add_string test_log "$test_log"
+	json_dump
+	json_cleanup
+}
+
+get_template_payload() {
+	json_init
+	json_add_string content "$(build_template_config)"
+	json_dump
+	json_cleanup
+}
+
+save_yaml_payload() {
+	local content="$1"
+	local apply_flag="$2"
+	local configpath binpath output
+
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	binpath=$(get_option binpath "$DEFAULT_BINPATH")
+
+	mkdir -p "${configpath%/*}" 2>/dev/null
+	printf '%s' "$content" | sed 's/\r$//' > "$TEMP_CONFIG"
+
+	: > "$TEMP_TEST_LOG"
+	if [ -x "$binpath" ]; then
+		if ! "$binpath" -c "$TEMP_CONFIG" --check-config > "$TEMP_TEST_LOG" 2>&1; then
+			output=$(safe_read_file "$TEMP_TEST_LOG")
+			json_init
+			json_add_boolean ok 0
+			json_add_string message 'Config validation failed'
+			json_add_string output "$output"
+			json_dump
+			json_cleanup
+			return 0
+		fi
+	fi
+
+	mv -f "$TEMP_CONFIG" "$configpath"
+	rm -f "$TEMP_TEST_LOG"
+
+	if is_true "$apply_flag" && [ -x "$INIT_SCRIPT" ]; then
+		"$INIT_SCRIPT" reload >/dev/null 2>&1 &
+	fi
+
+	json_init
+	json_add_boolean ok 1
+	json_add_string message 'Config saved'
+	json_add_string output ''
+	json_dump
+	json_cleanup
+}
+
+discard_yaml_payload() {
+	rm -f "$TEMP_CONFIG" "$TEMP_TEST_LOG"
+	json_init
+	json_add_boolean ok 1
+	json_dump
+	json_cleanup
+}
+
+runtime_log_path() {
+	local logfile
+
+	logfile=$(get_option logfile '')
+	case "$logfile" in
+		'')
+			return 1
+			;;
+		syslog)
+			if [ -x "$SYSLOG_SCRIPT" ]; then
+				"$SYSLOG_SCRIPT" >/dev/null 2>&1 &
+			fi
+			printf '%s\n' "$SYSLOG_TEMP"
+			;;
+		*)
+			printf '%s\n' "$logfile"
+			;;
+	esac
+}
+
+get_log_payload() {
+	local scope="$1"
+	local pos="$2"
+	local target content running
+
+	case "$scope" in
+		update)
+			target="$UPDATE_LOG"
+			;;
+		*)
+			target=$(runtime_log_path) || target=''
+			;;
+	esac
+
+	if [ -n "$target" ] && [ -r "$target" ]; then
+		read_log_window "$target" "$pos" 2048000
+		content="$LOG_CONTENT"
+	fi
+	if [ -e /var/run/update_core ]; then
+		running=1
+	else
+		running=0
+	fi
+
+	json_init
+	json_add_string scope "$scope"
+	json_add_string content "$content"
+	json_add_int position "${LOG_POS:-0}"
+	json_add_int size "${LOG_SIZE:-0}"
+	json_add_bool running "$running"
+	json_dump
+	json_cleanup
+}
+
+clear_log_payload() {
+	local scope="$1"
+	local target
+
+	case "$scope" in
+		update)
+			target="$UPDATE_LOG"
+			;;
+		*)
+			target=$(runtime_log_path) || target=''
+			case "$target" in
+				'')
+					target=''
+					;;
+			esac
+			;;
+	esac
+
+	[ -n "$target" ] && : > "$target"
+
+	json_init
+	json_add_boolean ok 1
+	json_dump
+	json_cleanup
+}
+
+start_update_payload() {
+	local force_flag="$1"
+	local mode=''
+	local ok=0
+
+	rm -f "$UPDATE_LOG"
+
+	if is_true "$force_flag"; then
+		mode='force'
+	fi
+
+	if [ -x "$UPDATE_SCRIPT" ]; then
+		if [ -n "$mode" ]; then
+			pkill -f '/usr/share/AdGuardHome/update_core.sh' >/dev/null 2>&1
+			sh "$UPDATE_SCRIPT" "$mode" > "$UPDATE_LOG" 2>&1 &
+		else
+			sh "$UPDATE_SCRIPT" > "$UPDATE_LOG" 2>&1 &
+		fi
+		ok=1
+	fi
+
+	json_init
+	json_add_boolean ok "$ok"
+	json_add_boolean force "$force_flag"
+	json_dump
+	json_cleanup
+}
+
+gfw_action_payload() {
+	local action="$1"
+	local configpath output
+	local ok=0
+
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	output=''
+
+	case "$action" in
+		add)
+			output=$(sh "$GFW_SCRIPT" 2>&1)
+			ok=1
+			;;
+		del)
+			output=$(sh "$GFW_SCRIPT" del 2>&1)
+			ok=1
+			;;
+		*)
+			output='Unknown action'
+			;;
+	esac
+
+	json_init
+	json_add_boolean ok "$ok"
+	json_add_string output "$output"
+	json_add_bool added "$(gfw_added "$configpath" && echo 1 || echo 0)"
+	json_dump
+	json_cleanup
+}
+
+set_links_payload() {
+	local content="$1"
+	local channel
+	local download_arch
+
+	channel=$(normalize_release_channel "$2")
+	download_arch=$(normalize_download_arch "$3")
+
+	mkdir -p "${LINKS_FILE%/*}" 2>/dev/null
+	printf '%s' "$content" | sed 's/\r$//' > "$LINKS_FILE"
+	uci -q set "${CONFIG_NAME}.${CONFIG_NAME}.release_channel=$channel"
+	uci -q set "${CONFIG_NAME}.${CONFIG_NAME}.downloadarch=$download_arch"
+	uci -q commit "$CONFIG_NAME"
+
+	json_init
+	json_add_boolean ok 1
+	json_add_string release_channel "$channel"
+	json_add_string download_arch "$download_arch"
+	json_dump
+	json_cleanup
+}
+
+get_status() {
+	local binpath configpath workdir logfile httpport redirect_mode dns_port version running
+
+	binpath=$(get_option binpath "$DEFAULT_BINPATH")
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	workdir=$(get_option workdir "$DEFAULT_WORKDIR")
+	logfile=$(get_option logfile '')
+	httpport=$(get_option httpport '3000')
+	redirect_mode=$(get_option redirect 'none')
+	dns_port=$(resolve_dns_port "$configpath" 2>/dev/null)
+	version=$(resolve_core_version "$binpath" 2>/dev/null)
+	if pgrep -f "$binpath" >/dev/null 2>&1; then
+		running=1
+	else
+		running=0
+	fi
+
+	json_init
+	json_add_bool enabled "$(get_option enabled 0)"
+	json_add_bool running "$running"
+	json_add_bool redirect "$( [ "$(cat /var/run/AdGredir 2>/dev/null)" = '1' ] && echo 1 || echo 0 )"
+	json_add_string redirect_mode "$redirect_mode"
+	json_add_bool core_ready "$( [ -x "$binpath" ] && echo 1 || echo 0 )"
+	json_add_bool config_ready "$( [ -r "$configpath" ] && echo 1 || echo 0 )"
+	json_add_bool workdir_ready "$( [ -d "$workdir" ] && echo 1 || echo 0 )"
+	json_add_bool log_ready "$( [ -z "$logfile" ] || [ "$logfile" = 'syslog' ] || [ -r "$logfile" ] && echo 1 || echo 0 )"
+	json_add_bool update_running "$( [ -e /var/run/update_core ] && echo 1 || echo 0 )"
+	json_add_bool config_dirty "$( [ -e "$TEMP_CONFIG" ] && echo 1 || echo 0 )"
+	json_add_bool verbose "$(get_option verbose 0)"
+	json_add_bool waitonboot "$(get_option waitonboot 1)"
+	json_add_string httpport "$httpport"
+	json_add_string dns_port "$dns_port"
+	json_add_string version "$version"
+	json_add_string binpath "$binpath"
+	json_add_string configpath "$configpath"
+	json_add_string workdir "$workdir"
+	json_add_string logfile "$logfile"
+	json_add_bool gfw_added "$(gfw_added "$configpath" && echo 1 || echo 0)"
+	json_dump
+	json_cleanup
+}
+
+get_meta() {
+	local workdir configpath links choices release_channel download_arch
+
+	workdir=$(get_option workdir "$DEFAULT_WORKDIR")
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	links=$(safe_read_file "$LINKS_FILE")
+	choices=$(read_backup_choices "$workdir")
+	release_channel=$(normalize_release_channel "$(get_option release_channel 'release')")
+	download_arch=$(normalize_download_arch "$(get_option downloadarch 'auto')")
+
+	json_init
+	json_add_string download_links "$links"
+	json_add_string release_channel "$release_channel"
+	json_add_string download_arch "$download_arch"
+	json_add_bool gfw_added "$(gfw_added "$configpath" && echo 1 || echo 0)"
+	json_add_array backup_choices
+		for choice in $choices; do
+			json_add_string '' "$choice"
+		done
+	json_close_array
+	json_add_bool temp_config_exists "$( [ -e "$TEMP_CONFIG" ] && echo 1 || echo 0 )"
+	json_add_string test_log "$(safe_read_file "$TEMP_TEST_LOG")"
+	json_dump
+	json_cleanup
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object getStatus
+		json_close_object
+		json_add_object getMeta
+		json_close_object
+		json_add_object getTemplateConfig
+		json_close_object
+		json_add_object getYaml
+		json_close_object
+		json_add_object saveYaml
+			json_add_string content string
+			json_add_boolean apply boolean
+		json_close_object
+		json_add_object discardYaml
+		json_close_object
+		json_add_object getLog
+			json_add_string scope string
+			json_add_int position integer
+		json_close_object
+		json_add_object clearLog
+			json_add_string scope string
+		json_close_object
+		json_add_object startUpdate
+			json_add_boolean force boolean
+		json_close_object
+		json_add_object gfwAction
+			json_add_string action string
+		json_close_object
+		json_add_object setLinks
+			json_add_string content string
+			json_add_string channel string
+			json_add_string download_arch string
+		json_close_object
+		json_dump
+		json_cleanup
+		;;
+	call)
+		input="$(cat)"
+		[ -n "$input" ] && json_load "$input"
+		case "$2" in
+			getStatus)
+				get_status
+				;;
+			getMeta)
+				get_meta
+				;;
+			getTemplateConfig)
+				json_cleanup
+				get_template_payload
+				;;
+			getYaml)
+				configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+				get_yaml_payload "$configpath"
+				;;
+			saveYaml)
+				json_get_var content content
+				json_get_var apply apply
+				json_cleanup
+				save_yaml_payload "$content" "$apply"
+				;;
+			discardYaml)
+				json_cleanup
+				discard_yaml_payload
+				;;
+			getLog)
+				json_get_var scope scope
+				json_get_var position position
+				json_cleanup
+				[ -n "$scope" ] || scope='runtime'
+				get_log_payload "$scope" "$position"
+				;;
+			clearLog)
+				json_get_var scope scope
+				json_cleanup
+				[ -n "$scope" ] || scope='runtime'
+				clear_log_payload "$scope"
+				;;
+			startUpdate)
+				json_get_var force force
+				json_cleanup
+				start_update_payload "$force"
+				;;
+			gfwAction)
+				json_get_var action action
+				json_cleanup
+				gfw_action_payload "$action"
+				;;
+			setLinks)
+				json_get_var content content
+				json_get_var channel channel
+				json_get_var download_arch download_arch
+				json_cleanup
+				set_links_payload "$content" "$channel" "$download_arch"
+				;;
+		esac
+		;;
+esac

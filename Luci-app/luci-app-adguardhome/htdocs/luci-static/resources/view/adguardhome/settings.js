@@ -1,0 +1,624 @@
+'use strict';
+'require view';
+'require form';
+'require rpc';
+'require uci';
+
+var callGetStatus = rpc.declare({
+	object: 'luci.adguardhome',
+	method: 'getStatus',
+	expect: { '': {} }
+});
+
+var callGetMeta = rpc.declare({
+	object: 'luci.adguardhome',
+	method: 'getMeta',
+	expect: { '': {} }
+});
+
+var callStartUpdate = rpc.declare({
+	object: 'luci.adguardhome',
+	method: 'startUpdate',
+	params: [ 'force' ],
+	expect: { '': {} }
+});
+
+var callGfwAction = rpc.declare({
+	object: 'luci.adguardhome',
+	method: 'gfwAction',
+	params: [ 'action' ],
+	expect: { '': {} }
+});
+
+var callSetLinks = rpc.declare({
+	object: 'luci.adguardhome',
+	method: 'setLinks',
+	params: [ 'content', 'channel', 'download_arch' ],
+	expect: { '': {} }
+});
+
+var RELEASE_CHANNELS = [ 'release', 'beta', 'github', 'custom' ];
+var DOWNLOAD_ARCHES = [ 'auto', 'i386', 'x86_64', 'armv5', 'armv6', 'armv7', 'aarch64', 'mips', 'mips64', 'mipsel', 'mips64el', 'powerpc', 'powerpc64' ];
+
+function hasChineseLocale() {
+	if (typeof document === 'undefined')
+		return false;
+
+	var bodyClass = document.body ? (document.body.className || '') : '';
+	var htmlLang = document.documentElement ? (document.documentElement.lang || '') : '';
+
+	return /\blang_zh(?:[-_][^\s]+)?\b/i.test(bodyClass) || /^zh(?:-|_|$)/i.test(htmlLang);
+}
+
+function t(message, fallback) {
+	var translated = _(message);
+
+	if (translated !== message || !fallback || !hasChineseLocale())
+		return translated;
+
+	return fallback;
+}
+
+function ensureObject(value) {
+	return (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+}
+
+function ensureArray(value) {
+	return Array.isArray(value) ? value : [];
+}
+
+function uniqueList(values) {
+	var seen = {};
+	var result = [];
+
+	ensureArray(values).forEach(function(value) {
+		value = String(value == null ? '' : value).trim();
+
+		if (!value || seen[value])
+			return;
+
+		seen[value] = true;
+		result.push(value);
+	});
+
+	return result;
+}
+
+function backupChoiceList(meta) {
+	var defaults = [ 'filters', 'stats.db', 'querylog.json', 'sessions.db' ];
+	var choices = uniqueList(defaults.concat(ensureObject(meta).backup_choices || []));
+
+	return choices.length ? choices : defaults;
+}
+
+function ensureConfigSection() {
+	var sections = uci.sections('AdGuardHome', 'AdGuardHome') || [];
+	var hasNamedSection = sections.some(function(section) {
+		return section && section['.name'] === 'AdGuardHome';
+	});
+
+	if (!hasNamedSection)
+		uci.add('AdGuardHome', 'AdGuardHome', 'AdGuardHome');
+}
+
+function addStatusNotice(node, type, text) {
+	node.className = 'adh-inline-status adh-inline-status-' + type;
+	node.textContent = text;
+}
+
+function isMissingRpcMethod(err) {
+	var message = err && err.message ? String(err.message) : '';
+
+	return /Object not found/i.test(message);
+}
+
+function explainUpdateError(err) {
+	if (isMissingRpcMethod(err)) {
+		return t(
+			'The installed rpcd object is still the old luci.adguardhome version and does not export startUpdate yet. Restart rpcd or reinstall this package, then refresh LuCI.',
+			'当前设备上的 rpcd 仍在使用旧版 luci.adguardhome 对象，还没有导出 startUpdate。请重启 rpcd 或重新安装当前软件包，然后刷新 LuCI。'
+		);
+	}
+
+	return err && err.message ? err.message : t('Unknown error', '未知错误');
+}
+
+function normalizeReleaseChannel(value) {
+	value = String(value == null ? '' : value).trim().toLowerCase();
+
+	return RELEASE_CHANNELS.indexOf(value) >= 0 ? value : 'release';
+}
+
+function normalizeLinksText(value) {
+	return String(value == null ? '' : value).replace(/\r\n/g, '\n').trim();
+}
+
+function buildDownloadLinks(channel) {
+	channel = normalizeReleaseChannel(channel);
+
+	switch (channel) {
+	case 'beta':
+		return [
+			'# Beta channel',
+			'https://static.adguard.com/adguardhome/beta/AdGuardHome_linux_${Arch}.tar.gz',
+			'# Stable fallback',
+			'https://static.adguard.com/adguardhome/release/AdGuardHome_linux_${Arch}.tar.gz',
+			'# GitHub release fallback',
+			'https://github.com/AdguardTeam/AdGuardHome/releases/download/${latest_ver}/AdGuardHome_linux_${Arch}.tar.gz'
+		].join('\n');
+
+	case 'github':
+		return [
+			'# GitHub release channel',
+			'https://github.com/AdguardTeam/AdGuardHome/releases/download/${latest_ver}/AdGuardHome_linux_${Arch}.tar.gz',
+			'# Stable fallback',
+			'https://static.adguard.com/adguardhome/release/AdGuardHome_linux_${Arch}.tar.gz',
+			'# Beta channel, uncomment if you want to try the testing build as a manual alternative',
+			'#https://static.adguard.com/adguardhome/beta/AdGuardHome_linux_${Arch}.tar.gz'
+		].join('\n');
+
+	case 'release':
+	default:
+		return [
+			'# Stable channel',
+			'https://static.adguard.com/adguardhome/release/AdGuardHome_linux_${Arch}.tar.gz',
+			'# Beta channel, uncomment this line if you want to try the testing build',
+			'#https://static.adguard.com/adguardhome/beta/AdGuardHome_linux_${Arch}.tar.gz',
+			'# GitHub release fallback',
+			'https://github.com/AdguardTeam/AdGuardHome/releases/download/${latest_ver}/AdGuardHome_linux_${Arch}.tar.gz'
+		].join('\n');
+	}
+}
+
+function detectReleaseChannel(linksText) {
+	var normalized = normalizeLinksText(linksText);
+
+	if (!normalized)
+		return 'release';
+
+	if (normalized === normalizeLinksText(buildDownloadLinks('release')))
+		return 'release';
+
+	if (normalized === normalizeLinksText(buildDownloadLinks('beta')))
+		return 'beta';
+
+	if (normalized === normalizeLinksText(buildDownloadLinks('github')))
+		return 'github';
+
+	return 'custom';
+}
+
+function normalizeDownloadArch(value) {
+	value = String(value == null ? '' : value).trim().toLowerCase();
+
+	return DOWNLOAD_ARCHES.indexOf(value) >= 0 ? value : 'auto';
+}
+
+function loadScript(url, id) {
+	return new Promise(function(resolve, reject) {
+		var existing = document.getElementById(id);
+
+		if (existing) {
+			if (existing.dataset.loaded === '1') {
+				resolve();
+				return;
+			}
+
+			existing.addEventListener('load', function() { resolve(); }, { once: true });
+			existing.addEventListener('error', reject, { once: true });
+			return;
+		}
+
+		var script = E('script', { id: id, src: url });
+		script.addEventListener('load', function() {
+			script.dataset.loaded = '1';
+			resolve();
+		}, { once: true });
+		script.addEventListener('error', reject, { once: true });
+		document.head.appendChild(script);
+	});
+}
+
+function ensureBcrypt() {
+	if (window.TwinBcrypt)
+		return Promise.resolve(window.TwinBcrypt);
+
+	return loadScript(L.resource('twin-bcrypt.min.js'), 'adh-bcrypt-script').then(function() {
+		if (!window.TwinBcrypt)
+			throw new Error('TwinBcrypt unavailable');
+
+		return window.TwinBcrypt;
+	});
+}
+
+var pageStyle = [
+	'.adh-settings-page { --adh-ink:#1f2a55; --adh-muted:#66718f; --adh-line:#dbe3f0; --adh-panel:#ffffff; --adh-soft:#f4f7fb; --adh-blue:#5b6ee1; --adh-green:#1f9b62; --adh-red:#d84b63; display:grid; gap:18px; color:var(--adh-ink); }',
+	'.adh-hero { position:relative; overflow:hidden; border-radius:22px; padding:26px; color:var(--adh-ink); background:linear-gradient(135deg,#f8fbff 0%,#edf3fb 100%); border:1px solid var(--adh-line); box-shadow:0 18px 40px rgba(35,48,85,.08); }',
+	'.adh-hero:before { content:""; position:absolute; right:-70px; top:-70px; width:220px; height:220px; border-radius:50%; background:radial-gradient(circle, rgba(91,110,225,.14), rgba(91,110,225,0)); }',
+	'.adh-hero-grid { position:relative; z-index:1; display:grid; gap:18px; grid-template-columns:minmax(0,1.4fr) minmax(280px,.8fr); }',
+	'.adh-hero h2 { display:inline; margin:0; padding:0; border:0; border-radius:0; background:transparent !important; box-shadow:none; font-size:31px; font-weight:800; color:#151d4a; }',
+	'.adh-hero p { margin:10px 0 0; max-width:56rem; line-height:1.75; color:var(--adh-muted); }',
+	'.adh-chip-row { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }',
+	'.adh-chip { display:inline-flex; align-items:center; gap:8px; padding:8px 13px; border-radius:999px; background:rgba(255,255,255,.72); border:1px solid var(--adh-line); font-size:12px; font-weight:700; color:#34405f; }',
+	'.adh-chip:before { content:""; width:8px; height:8px; border-radius:50%; background:#9aa6ba; }',
+	'.adh-chip-ok { color:#12643d; border-color:rgba(31,155,98,.22); background:rgba(31,155,98,.10); }',
+	'.adh-chip-warn { color:#8a5a12; border-color:rgba(184,117,20,.24); background:rgba(184,117,20,.10); }',
+	'.adh-chip-bad { color:#8f263a; border-color:rgba(216,75,99,.24); background:rgba(216,75,99,.11); }',
+	'.adh-chip-ok:before { background:var(--adh-green); }',
+	'.adh-chip-warn:before { background:#b87514; }',
+	'.adh-chip-bad:before { background:var(--adh-red); }',
+	'.adh-summary-card { padding:18px; border-radius:16px; background:rgba(255,255,255,.74); border:1px solid var(--adh-line); }',
+	'.adh-summary-card strong { display:block; margin-top:8px; font-size:1.18rem; color:#121a46; }',
+	'.adh-summary-card span { display:block; font-size:12px; line-height:1.6; color:var(--adh-muted); }',
+	'.adh-settings-page .cbi-map { position:relative; z-index:2; margin:0; border-radius:18px; border:1px solid var(--adh-line); box-shadow:0 12px 30px rgba(35,48,85,.06); overflow:visible; background:var(--adh-panel); }',
+	'.adh-settings-page .cbi-map > h2 { margin:0; padding:22px 24px 0; font-size:1.36rem; color:#16363e; }',
+	'.adh-settings-page .cbi-map > .cbi-map-descr { padding:10px 24px 0; color:var(--adh-muted); line-height:1.75; }',
+	'.adh-settings-page .cbi-section { margin:0; border:0; box-shadow:none; background:transparent; }',
+	'.adh-settings-page .cbi-section-node { position:relative; z-index:2; padding-top:6px; background:transparent; overflow:visible; }',
+	'.adh-settings-page .cbi-value { padding:14px 20px; border-top:1px solid rgba(22,54,62,.08); }',
+	'.adh-settings-page .cbi-dropdown, .adh-settings-page .cbi-dropdown ul { z-index:40; }',
+	'.adh-settings-page input[type="text"], .adh-settings-page input[type="password"], .adh-settings-page textarea, .adh-settings-page select { border-radius:12px; border-color:rgba(22,54,62,.16); box-shadow:none; }',
+	'.adh-action-grid { position:relative; z-index:1; display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }',
+	'.adh-action-card { padding:20px; border-radius:18px; border:1px solid var(--adh-line); background:var(--adh-panel); box-shadow:0 12px 30px rgba(35,48,85,.06); }',
+	'.adh-action-card h3 { margin:0; font-size:1.15rem; color:#16363e; }',
+	'.adh-action-card p { margin:10px 0 0; line-height:1.7; color:var(--adh-muted); }',
+	'.adh-field-label { display:block; margin-top:14px; margin-bottom:8px; font-size:13px; font-weight:700; color:#425174; }',
+	'.adh-channel-note { margin-top:8px; font-size:12px; line-height:1.65; color:#60747a; }',
+	'.adh-action-card textarea, .adh-action-card input { width:100%; margin-top:14px; }',
+	'.adh-action-card select { width:100%; }',
+	'.adh-action-row { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }',
+	'.adh-inline-status { margin-top:14px; padding:12px 14px; border-radius:14px; font-size:13px; line-height:1.7; }',
+	'.adh-inline-status-info { background:rgba(29,91,102,.08); color:#204d56; }',
+	'.adh-inline-status-success { background:rgba(56,158,94,.10); color:#19643b; }',
+	'.adh-inline-status-warning { background:rgba(214,149,39,.12); color:#8e5f11; }',
+	'.adh-inline-status-error { background:rgba(209,73,91,.12); color:#8e2f3f; }',
+	'.adh-link-note { margin-top:10px; font-size:12px; line-height:1.6; color:#60747a; }',
+	'@media screen and (max-width: 920px) { .adh-hero-grid { grid-template-columns:1fr; } }'
+].join('\n');
+
+return view.extend({
+	load: function() {
+		return Promise.all([
+			uci.load('AdGuardHome'),
+			L.resolveDefault(callGetStatus(), {}),
+			L.resolveDefault(callGetMeta(), {})
+		]);
+	},
+
+	renderHero: function(status) {
+		return E('div', { 'class': 'adh-hero' }, [
+			E('style', {}, pageStyle),
+			E('div', { 'class': 'adh-hero-grid' }, [
+				E('div', {}, [
+					E('h2', {}, t('AdGuard Home Settings', 'AdGuard Home 设置中心')),
+					E('p', {}, t('Manage service startup, redirect mode, workdir persistence, update mirrors and gfw helper actions from the new modern LuCI entry.', '在新的 modern LuCI 入口里统一管理服务启动、重定向模式、工作目录持久化、更新镜像和 gfw 辅助动作。')),
+					E('div', { 'class': 'adh-chip-row' }, [
+						E('span', { 'class': 'adh-chip ' + (status.running ? 'adh-chip-ok' : 'adh-chip-bad') }, status.running ? t('Service running', '服务运行中') : t('Service stopped', '服务未运行')),
+						E('span', { 'class': 'adh-chip ' + (status.core_ready ? 'adh-chip-ok' : 'adh-chip-bad') }, status.core_ready ? t('Core ready', '核心已就绪') : t('Core missing', '核心缺失')),
+						E('span', { 'class': 'adh-chip ' + (status.redirect ? 'adh-chip-warn' : 'adh-chip-ok') }, status.redirect ? t('Port redirect enabled', '端口重定向已开启') : t('Port redirect disabled', '端口重定向未开启')),
+						E('span', { 'class': 'adh-chip ' + (status.config_dirty ? 'adh-chip-warn' : 'adh-chip-ok') }, status.config_dirty ? t('Pending YAML draft', '存在待提交 YAML 临时稿') : t('YAML synced', 'YAML 已同步'))
+					])
+				]),
+				E('div', { 'style': 'display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))' }, [
+					E('div', { 'class': 'adh-summary-card' }, [
+						E('span', {}, t('Current core version', '当前核心版本')),
+						E('strong', {}, status.version || t('Unknown', '未知'))
+					]),
+					E('div', { 'class': 'adh-summary-card' }, [
+						E('span', {}, t('Web console port', 'Web 控制台端口')),
+						E('strong', {}, status.httpport || '3000')
+					]),
+					E('div', { 'class': 'adh-summary-card' }, [
+						E('span', {}, t('DNS listening port', 'DNS 监听端口')),
+						E('strong', {}, status.dns_port || '?')
+					]),
+					E('div', { 'class': 'adh-summary-card' }, [
+						E('span', {}, t('Current redirect mode', '当前重定向模式')),
+						E('strong', {}, status.redirect_mode || t('None', '无'))
+					])
+				])
+			])
+		]);
+	},
+
+	renderActionCards: function(mapNode, status, meta) {
+		status = ensureObject(status);
+		meta = ensureObject(meta);
+
+		var gfwStatus = E('div', { 'class': 'adh-inline-status adh-inline-status-info' }, meta.gfw_added ? t('The gfwlist block is currently injected into the YAML config.', '当前 YAML 配置中已注入 gfwlist 规则块。') : t('The gfwlist block has not been injected yet.', '当前 YAML 配置尚未注入 gfwlist 规则块。'));
+		var initialChannel = meta.download_links ? detectReleaseChannel(meta.download_links) : normalizeReleaseChannel(meta.release_channel || 'release');
+		var linksBox = E('textarea', { rows: 9, wrap: 'soft' }, [ meta.download_links || buildDownloadLinks(initialChannel) ]);
+		var channelLabel = E('label', { 'class': 'adh-field-label' }, t('Core release channel', '核心下载通道'));
+		var channelSelect = E('select', {}, [
+			E('option', { 'value': 'release' }, t('Stable release', '正式版')),
+			E('option', { 'value': 'beta' }, t('Beta release', '测试版')),
+			E('option', { 'value': 'github' }, t('GitHub release fallback', 'GitHub 发布源')),
+			E('option', { 'value': 'custom' }, t('Custom links', '自定义地址'))
+		]);
+		var channelNote = E('div', { 'class': 'adh-channel-note' }, t('Changing the channel automatically rewrites the download URLs below. Manual edits switch this selector to Custom.', '切换通道会自动改写下方下载地址；如果你手工修改文本框，这个选择器会自动切换到“自定义地址”。'));
+		var linksStatus = E('div', { 'class': 'adh-inline-status adh-inline-status-info' }, t('Mirror list changes are written to links.txt. The updater tries uncommented lines from top to bottom, so the selected channel is written as the preferred URL and the remaining entries are kept as fallbacks.', '这里的镜像列表会直接写入 links.txt。更新脚本会从上到下尝试未注释的地址，所以所选通道会被写成首选地址，其余地址保留为回退。'));
+		var passwordInput = E('input', {
+			type: 'password',
+			placeholder: t('Enter a plain-text password to generate bcrypt', '输入明文密码，自动生成 bcrypt')
+		});
+		var passwordStatus = E('div', { 'class': 'adh-inline-status adh-inline-status-info' }, t('The generated bcrypt hash will be written into the hashpass field above. Save & Apply afterwards to update users.password in AdGuard Home.', '生成的 bcrypt 哈希会回填到上面的 hashpass 字段。之后执行保存并应用，服务会把它写入 AdGuard Home 的 users.password。'));
+		var updateStatus = E('div', { 'class': 'adh-inline-status adh-inline-status-info' }, status.update_running ? t('An update process is already active.', '当前已有更新进程在运行。') : t('No updater process is currently active.', '当前没有更新进程在运行。'));
+		var saveLinksBtn = E('button', { 'class': 'btn cbi-button cbi-button-save' }, t('Save mirror list', '保存镜像列表'));
+		var hashBtn = E('button', { 'class': 'btn cbi-button' }, t('Generate bcrypt hash', '生成 bcrypt 哈希'));
+		var gfwAddBtn = E('button', { 'class': 'btn cbi-button cbi-button-action' }, t('Add gfwlist block', '注入 gfwlist 规则块'));
+		var gfwDelBtn = E('button', { 'class': 'btn cbi-button cbi-button-remove' }, t('Remove gfwlist block', '移除 gfwlist 规则块'));
+		var updateBtn = E('button', { 'class': 'btn cbi-button cbi-button-action' }, t('Start standard update', '启动标准更新'));
+		var forceUpdateBtn = E('button', { 'class': 'btn cbi-button cbi-button-negative' }, t('Force update core', '强制更新核心'));
+
+		channelSelect.value = initialChannel;
+
+		function syncGfwState(added, output) {
+			addStatusNotice(gfwStatus, added ? 'success' : 'warning', added ? t('The gfwlist block is now present in the YAML config.', 'gfwlist 规则块现在已经写入 YAML 配置。') : t('The gfwlist block is currently absent from the YAML config.', '当前 YAML 配置中没有 gfwlist 规则块。'));
+			if (output)
+				gfwStatus.textContent += ' ' + output;
+		}
+
+		function persistMirrorList(statusMessage) {
+			var selectedChannel = normalizeReleaseChannel(channelSelect.value);
+			var downloadArchField = mapNode.querySelector('select[name$=".downloadarch"]');
+			var selectedDownloadArch = normalizeDownloadArch(downloadArchField ? downloadArchField.value : meta.download_arch || 'auto');
+
+			return callSetLinks(linksBox.value, selectedChannel, selectedDownloadArch).then(function(response) {
+				if (response && response.release_channel)
+					channelSelect.value = normalizeReleaseChannel(response.release_channel);
+
+				addStatusNotice(linksStatus, 'success', statusMessage || t('Mirror list saved. The next update run will use this content.', '镜像列表已保存，下一次更新就会使用这里的内容。'));
+			});
+		}
+
+		channelSelect.addEventListener('change', function() {
+			var selectedChannel = normalizeReleaseChannel(channelSelect.value);
+
+			if (selectedChannel === 'custom') {
+				addStatusNotice(linksStatus, 'info', t('Custom link mode enabled. Edit the textarea below and save when you are ready.', '已切换到自定义地址模式。请在下方文本框编辑，然后保存。'));
+				return;
+			}
+
+			linksBox.value = buildDownloadLinks(selectedChannel);
+			addStatusNotice(linksStatus, 'info', t('Download links have been regenerated for the selected release channel. Save mirror list to persist them or start an update to use them immediately.', '已按所选发布通道自动匹配下载地址。点击“保存镜像列表”可持久化，或直接启动更新立即使用。'));
+		});
+
+		linksBox.addEventListener('input', function() {
+			var detectedChannel = detectReleaseChannel(linksBox.value);
+
+			if (channelSelect.value !== detectedChannel)
+				channelSelect.value = detectedChannel;
+		});
+
+		saveLinksBtn.addEventListener('click', function(ev) {
+			ev.preventDefault();
+			addStatusNotice(linksStatus, 'info', t('Saving mirror list...', '正在保存镜像列表...'));
+			persistMirrorList().catch(function(err) {
+				addStatusNotice(linksStatus, 'error', t('Failed to save mirror list: ', '保存镜像列表失败：') + err.message);
+			});
+		});
+
+		hashBtn.addEventListener('click', function(ev) {
+			ev.preventDefault();
+			addStatusNotice(passwordStatus, 'info', t('Generating bcrypt hash...', '正在生成 bcrypt 哈希...'));
+
+			ensureBcrypt().then(function(bcrypt) {
+				var hashField = mapNode.querySelector('input[name$=".hashpass"]');
+
+				if (!hashField)
+					throw new Error(t('hashpass field not found', '未找到 hashpass 字段'));
+				if (!passwordInput.value)
+					throw new Error(t('Password is empty', '密码为空'));
+
+				hashField.value = bcrypt.hashSync(passwordInput.value, bcrypt.genSalt(10));
+				hashField.dispatchEvent(new Event('input', { bubbles: true }));
+				passwordInput.value = '';
+				addStatusNotice(passwordStatus, 'success', t('bcrypt hash generated and inserted into the form. Save & Apply to activate it.', 'bcrypt 哈希已生成并写入表单，接下来执行保存并应用即可生效。'));
+			}).catch(function(err) {
+				addStatusNotice(passwordStatus, 'error', t('Failed to generate bcrypt hash: ', '生成 bcrypt 哈希失败：') + err.message);
+			});
+		});
+
+		gfwAddBtn.addEventListener('click', function(ev) {
+			ev.preventDefault();
+			addStatusNotice(gfwStatus, 'info', t('Running gfw helper...', '正在执行 gfw 辅助脚本...'));
+			callGfwAction('add').then(function(response) {
+				syncGfwState(!!response.added, response.output || '');
+			}).catch(function(err) {
+				addStatusNotice(gfwStatus, 'error', t('Failed to run gfw helper: ', '执行 gfw 辅助脚本失败：') + err.message);
+			});
+		});
+
+		gfwDelBtn.addEventListener('click', function(ev) {
+			ev.preventDefault();
+			addStatusNotice(gfwStatus, 'info', t('Running gfw helper...', '正在执行 gfw 辅助脚本...'));
+			callGfwAction('del').then(function(response) {
+				syncGfwState(!!response.added, response.output || '');
+			}).catch(function(err) {
+				addStatusNotice(gfwStatus, 'error', t('Failed to run gfw helper: ', '执行 gfw 辅助脚本失败：') + err.message);
+			});
+		});
+
+		updateBtn.addEventListener('click', function(ev) {
+			ev.preventDefault();
+			addStatusNotice(updateStatus, 'info', t('Saving download source and scheduling standard update...', '正在保存下载源并调度标准更新...'));
+			persistMirrorList(t('Mirror list saved for the selected channel.', '已按所选通道保存下载地址。')).then(function() {
+				return callStartUpdate(false);
+			}).then(function(response) {
+				if (!response.ok)
+					throw new Error(t('Update script is unavailable', '更新脚本不可用'));
+
+				addStatusNotice(updateStatus, 'success', t('Standard update scheduled. Open Runtime Log to observe progress.', '标准更新已调度，可到运行日志页观察输出。'));
+			}).catch(function(err) {
+				addStatusNotice(updateStatus, 'error', t('Failed to start update: ', '启动更新失败：') + explainUpdateError(err));
+			});
+		});
+
+		forceUpdateBtn.addEventListener('click', function(ev) {
+			ev.preventDefault();
+			addStatusNotice(updateStatus, 'info', t('Saving download source and scheduling forced update...', '正在保存下载源并调度强制更新...'));
+			persistMirrorList(t('Mirror list saved for the selected channel.', '已按所选通道保存下载地址。')).then(function() {
+				return callStartUpdate(true);
+			}).then(function(response) {
+				if (!response.ok)
+					throw new Error(t('Update script is unavailable', '更新脚本不可用'));
+
+				addStatusNotice(updateStatus, 'success', t('Forced update scheduled. Open Runtime Log to observe progress.', '强制更新已调度，可到运行日志页观察输出。'));
+			}).catch(function(err) {
+				addStatusNotice(updateStatus, 'error', t('Failed to start forced update: ', '启动强制更新失败：') + explainUpdateError(err));
+			});
+		});
+
+		return E('div', { 'class': 'adh-action-grid' }, [
+			E('div', { 'class': 'adh-action-card' }, [
+				E('h3', {}, t('Update mirrors and password helper', '更新镜像与密码辅助')),
+				E('p', {}, t('Choose a release channel to auto-match download URLs, keep manual editing available through Custom mode, and generate a bcrypt hash for the browser admin password without going back to the legacy template.', '可通过下载通道自动匹配升级地址，也可切换到自定义模式手工维护镜像，并直接生成浏览器管理密码的 bcrypt 哈希，不再依赖旧模板。')),
+				channelLabel,
+				channelSelect,
+				channelNote,
+				linksBox,
+				E('div', { 'class': 'adh-action-row' }, [ saveLinksBtn, hashBtn ]),
+				passwordInput,
+				passwordStatus,
+				linksStatus
+			]),
+			E('div', { 'class': 'adh-action-card' }, [
+				E('h3', {}, t('gfw helper actions', 'gfw 辅助动作')),
+				E('p', {}, t('Reuse the existing gfw2adg.sh behavior through rpcd so that add and remove operations survive the migration away from the Lua controller.', '通过 rpcd 继续复用现有的 gfw2adg.sh 行为，让加入和移除规则块这类动作在迁出 Lua controller 后仍然可用。')),
+				E('div', { 'class': 'adh-action-row' }, [ gfwAddBtn, gfwDelBtn ]),
+				gfwStatus
+			]),
+			E('div', { 'class': 'adh-action-card' }, [
+				E('h3', {}, t('Core update control', '核心更新控制')),
+				E('p', {}, t('Trigger the existing updater through rpcd, then follow the output in the Runtime Log page instead of using the old iframe template.', '通过 rpcd 触发现有的更新脚本，再到运行日志页追踪输出，不再依赖旧版 iframe 模板。')),
+				E('div', { 'class': 'adh-action-row' }, [
+					updateBtn,
+					forceUpdateBtn,
+					E('a', { 'class': 'btn cbi-button', 'href': L.url('admin', 'services', 'adguardhome', 'log') }, t('Open Runtime Log', '打开运行日志'))
+				]),
+				updateStatus,
+				E('div', { 'class': 'adh-link-note' }, t('Service-side update behavior is still implemented by update_core.sh; the modern page only changes how you trigger and monitor it.', '服务端的更新逻辑仍然由 update_core.sh 实现；modern 页面只负责新的触发与观察入口。'))
+			])
+		]);
+	},
+
+	render: function(data) {
+		var status = ensureObject(data && data[1]);
+		var meta = ensureObject(data && data[2]);
+		var backupChoices = backupChoiceList(meta);
+
+		ensureConfigSection();
+
+		var m = new form.Map('AdGuardHome', t('AdGuard Home Settings', 'AdGuard Home 设置中心'), t('These options stay in UCI and are now managed by a modern LuCI form. File-backed and script-backed operations remain on dedicated action cards below.', '这些选项继续保存在 UCI 中，并改由 modern LuCI 表单维护。文件型和脚本型动作则放在下方的独立操作卡片里。'));
+		var s = m.section(form.NamedSection, 'AdGuardHome', 'AdGuardHome', t('Base service settings', '基础服务设置'));
+		var o;
+		var backupPath;
+
+		o = s.option(form.Flag, 'enabled', t('Enable service', '启用服务'));
+		o.rmempty = false;
+		o.default = '0';
+
+		o = s.option(form.Value, 'httpport', t('Browser management port', '网页管理端口'));
+		o.datatype = 'port';
+		o.rmempty = false;
+		o.placeholder = status.httpport || '3000';
+		o.default = status.httpport || '3000';
+
+		o = s.option(form.ListValue, 'redirect', t('Redirect mode', '重定向模式'));
+		o.value('none', t('None', '无'));
+		o.value('dnsmasq-upstream', t('Run as dnsmasq upstream server', '作为 dnsmasq 的上游服务器'));
+		o.value('redirect', t('Redirect port 53 to AdGuard Home', '重定向 53 端口到 AdGuard Home'));
+		o.value('exchange', t('Use port 53 instead of dnsmasq', '使用 53 端口替换 dnsmasq'));
+		o.default = status.redirect_mode || 'none';
+
+		o = s.option(form.Value, 'binpath', t('Binary path', '执行文件路径'));
+		o.rmempty = false;
+		o.placeholder = status.binpath || '/etc/config/adGuardConfig/AdGuardHome';
+
+		o = s.option(form.ListValue, 'upxflag', t('UPX compression after download', '下载后使用 UPX 压缩'));
+		o.value('', t('None', '无'));
+		o.value('-1', t('Compress faster', '快速压缩'));
+		o.value('-9', t('Compress better', '更高压缩比'));
+		o.value('--best', t('Compress best (may be slow)', '最佳压缩（可能较慢）'));
+		o.value('--brute', t('Try all methods (slow)', '尝试全部方法（较慢）'));
+		o.value('--ultra-brute', t('Try more variants (very slow)', '尝试更多变体（很慢）'));
+
+		o = s.option(form.ListValue, 'downloadarch', t('Choose Arch for download', '选择下载架构'));
+		o.value('auto', t('Auto', '自动'));
+		o.value('i386', 'i386');
+		o.value('x86_64', 'x86_64');
+		o.value('armv5', 'armv5');
+		o.value('armv6', 'armv6');
+		o.value('armv7', 'armv7');
+		o.value('aarch64', 'aarch64');
+		o.value('mips', 'mips');
+		o.value('mips64', 'mips64');
+		o.value('mipsel', 'mipsel');
+		o.value('mips64el', 'mips64el');
+		o.value('powerpc', 'powerpc');
+		o.value('powerpc64', 'powerpc64');
+		o.default = meta.download_arch || 'auto';
+		o.description = t('Preserve the legacy choose-arch behavior. Auto uses the router architecture, while a manual selection overrides the ${Arch} placeholder used by the core updater.', '保留旧版的“选择下载架构”能力。自动模式使用路由器自身架构，手工选择则会覆盖核心更新时 ${Arch} 占位符的取值。');
+
+		o = s.option(form.Value, 'configpath', t('Config path', '配置文件路径'));
+		o.rmempty = false;
+		o.placeholder = status.configpath || '/etc/config/adGuardConfig/AdGuardHome.yaml';
+
+		o = s.option(form.Value, 'workdir', t('Workdir', '工作目录'));
+		o.rmempty = false;
+		o.placeholder = status.workdir || '/etc/config/adGuardConfig/workspace';
+
+		o = s.option(form.Value, 'logfile', t('Runtime log file', '运行日志文件'));
+		o.placeholder = t('Leave empty to disable, or use syslog', '留空则禁用，或填写 syslog');
+
+		o = s.option(form.Flag, 'verbose', t('Verbose log', '详细日志'));
+
+		o = s.option(form.Value, 'gfwupstream', t('gfwlist upstream DNS', 'gfwlist 上游 DNS'));
+		o.placeholder = 'tcp://223.5.5.5';
+
+		o = s.option(form.Value, 'hashpass', t('Browser password bcrypt hash', '浏览器管理密码哈希'));
+		o.rmempty = true;
+		o.description = t('Paste a bcrypt hash directly, or use the helper card below to generate one from a plain-text password.', '可以直接粘贴 bcrypt 哈希，也可以使用下方的辅助卡片从明文密码生成。');
+
+		o = s.option(form.MultiValue, 'upprotect', t('Keep files across sysupgrade', '系统升级时保留文件'));
+		o.widget = 'checkbox';
+		o.value('$binpath', t('Core binary', '核心执行文件'));
+		o.value('$configpath', t('Config file', '配置文件'));
+		o.value('$logfile', t('Log file', '日志文件'));
+		o.value('$workdir/data/sessions.db', 'sessions.db');
+		o.value('$workdir/data/stats.db', 'stats.db');
+		o.value('$workdir/data/querylog.json', 'querylog.json');
+		o.value('$workdir/data/filters', 'filters');
+
+		o = s.option(form.Flag, 'waitonboot', t('Wait for network before restart on boot', '开机等待网络后再重启'));
+		o.default = '1';
+
+		o = s.option(form.MultiValue, 'backupfile', t('Backup workdir files on shutdown', '关机时备份工作目录文件'));
+		o.widget = 'checkbox';
+		backupChoices.forEach(function(choice) {
+			o.value(choice, choice);
+		});
+
+		backupPath = s.option(form.Value, 'backupwdpath', t('Backup workdir path', '工作目录备份路径'));
+		backupPath.placeholder = '/etc/config/adGuardConfig/workspace';
+		backupChoices.forEach(function(choice) {
+			backupPath.depends('backupfile', choice);
+		});
+
+		o = s.option(form.MultiValue, 'crontab', t('Crontab tasks', '计划任务'));
+		o.widget = 'checkbox';
+		o.value('autoupdate', t('Auto update core', '自动升级核心'));
+		o.value('cutquerylog', t('Auto trim query log', '自动裁剪查询日志'));
+		o.value('cutruntimelog', t('Auto trim runtime log', '自动裁剪运行日志'));
+		o.value('autohost', t('Auto update IPv6 hosts and restart AdGuard Home', '自动更新 IPv6 hosts 并重启 AdGuard Home'));
+		o.value('autogfw', t('Auto update gfwlist and restart AdGuard Home', '自动更新 gfwlist 并重启 AdGuard Home'));
+
+		return m.render().then(L.bind(function(mapNode) {
+			return E('div', { 'class': 'adh-settings-page' }, [
+				this.renderHero(status),
+				mapNode,
+				this.renderActionCards(mapNode, status, meta)
+			]);
+		}, this));
+	}
+});
