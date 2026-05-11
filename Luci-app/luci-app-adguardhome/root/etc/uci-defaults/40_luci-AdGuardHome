@@ -1,0 +1,29 @@
+#!/bin/sh
+
+configpath=$(uci -q get AdGuardHome.AdGuardHome.configpath 2>/dev/null)
+workdir=$(uci -q get AdGuardHome.AdGuardHome.workdir 2>/dev/null)
+binpath=$(uci -q get AdGuardHome.AdGuardHome.binpath 2>/dev/null)
+downloadarch=$(uci -q get AdGuardHome.AdGuardHome.downloadarch 2>/dev/null)
+release_channel=$(uci -q get AdGuardHome.AdGuardHome.release_channel 2>/dev/null)
+tagname=$(uci -q get AdGuardHome.AdGuardHome.tagname 2>/dev/null)
+
+uci -q batch <<-EOF >/dev/null 2>&1
+	delete ucitrack.@AdGuardHome[-1]
+	add ucitrack AdGuardHome
+	set ucitrack.@AdGuardHome[-1].init=AdGuardHome
+	commit ucitrack
+	delete AdGuardHome.AdGuardHome.ucitracktest
+	set AdGuardHome.AdGuardHome.configpath='${configpath:-/etc/config/adGuardConfig/AdGuardHome.yaml}'
+	set AdGuardHome.AdGuardHome.workdir='${workdir:-/etc/config/adGuardConfig/workspace}'
+	set AdGuardHome.AdGuardHome.binpath='${binpath:-/etc/config/adGuardConfig/AdGuardHome}'
+	set AdGuardHome.AdGuardHome.downloadarch='${downloadarch:-auto}'
+	set AdGuardHome.AdGuardHome.release_channel='${release_channel:-release}'
+	set AdGuardHome.AdGuardHome.tagname='${tagname:-release}'
+	commit AdGuardHome
+EOF
+
+mkdir -p /etc/config/adGuardConfig/workspace 2>/dev/null
+rm -rf /tmp/luci-modulecache/ /var/luci-modulecache/
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* /var/luci-indexcache.* 2>/dev/null
+[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1
+exit 0

@@ -1,0 +1,317 @@
+#!/bin/sh
+
+. "${IPKG_INSTROOT}/usr/share/libubox/jshn.sh"
+
+CONFIG_NAME='AdGuardHome'
+DEFAULT_BINPATH='/etc/config/adGuardConfig/AdGuardHome'
+DEFAULT_CONFIGPATH='/etc/config/adGuardConfig/AdGuardHome.yaml'
+DEFAULT_WORKDIR='/etc/config/adGuardConfig/workspace'
+LINKS_FILE="${IPKG_INSTROOT}/usr/share/AdGuardHome/links.txt"
+TEMPLATE_FILE="${IPKG_INSTROOT}/usr/share/AdGuardHome/AdGuardHome_template.yaml"
+TEMP_CONFIG='/tmp/AdGuardHometmpconfig.yaml'
+TEMP_TEST_LOG='/tmp/AdGuardHometest.log'
+UPDATE_LOG='/tmp/AdGuardHome_update.log'
+SYSLOG_TEMP='/tmp/AdGuardHometmp.log'
+UPDATE_SCRIPT="${IPKG_INSTROOT}/usr/share/AdGuardHome/update_core.sh"
+GFW_SCRIPT="${IPKG_INSTROOT}/usr/share/AdGuardHome/gfw2adg.sh"
+GFW_IPSET_SCRIPT="${IPKG_INSTROOT}/usr/share/AdGuardHome/gfwipset2adg.sh"
+SYSLOG_SCRIPT="${IPKG_INSTROOT}/usr/share/AdGuardHome/getsyslog.sh"
+
+get_option() {
+	local option="$1" fallback="$2" value
+	value=$(uci -q get "$CONFIG_NAME.$CONFIG_NAME.$option" 2>/dev/null)
+	[ -n "$value" ] && printf '%s\n' "$value" || printf '%s\n' "$fallback"
+}
+
+json_bool() {
+	case "$2" in 1|true|yes|on) json_add_boolean "$1" 1 ;; *) json_add_boolean "$1" 0 ;; esac
+}
+
+safe_cat() {
+	[ -r "$1" ] || return 1
+	cat "$1" 2>/dev/null
+}
+
+normalize_arch() {
+	case "$1" in
+		auto|'') printf '%s\n' auto ;;
+		386|i386) printf '%s\n' 386 ;;
+		amd64|x86_64) printf '%s\n' amd64 ;;
+		armv5|armv6|armv7|arm64|aarch64) [ "$1" = aarch64 ] && printf '%s\n' arm64 || printf '%s\n' "$1" ;;
+		mips|mips_softfloat) printf '%s\n' mips_softfloat ;;
+		mips64|mips64_softfloat) printf '%s\n' mips64_softfloat ;;
+		mipsel|mipsle_softfloat) printf '%s\n' mipsle_softfloat ;;
+		mips64el|mips64le_softfloat) printf '%s\n' mips64le_softfloat ;;
+		powerpc64|ppc64le) printf '%s\n' ppc64le ;;
+		*) printf '%s\n' auto ;;
+	esac
+}
+
+normalize_channel() {
+	case "$1" in release|beta|github|custom) printf '%s\n' "$1" ;; *) printf '%s\n' release ;; esac
+}
+
+resolve_dns_port() {
+	[ -r "$1" ] || return 1
+	awk '/^[[:space:]]*port:/{ print $2; exit }' "$1" 2>/dev/null
+}
+
+resolve_core_version() {
+	local binpath="$1" version
+	[ -x "$binpath" ] || return 1
+	version=$($binpath --version 2>/dev/null | grep -m 1 -oE 'v?[0-9]+[.][A-Za-z0-9._-]+')
+	[ -n "$version" ] || return 1
+	printf '%s\n' "$version"
+}
+
+read_log_window() {
+	local file="$1" pos="$2" bytes="$3" size count
+	LOG_CONTENT=''
+	LOG_POS=0
+	LOG_SIZE=0
+	[ -r "$file" ] || return 1
+	size=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
+	case "$size" in ''|*[!0-9]*) size=0 ;; esac
+	case "$pos" in ''|*[!0-9]*) pos=0 ;; esac
+	case "$bytes" in ''|*[!0-9]*) bytes=2048000 ;; esac
+	[ "$pos" -le "$size" ] 2>/dev/null || pos=0
+	count=$((size - pos))
+	[ "$count" -le "$bytes" ] 2>/dev/null || count="$bytes"
+	if [ "$count" -gt 0 ] 2>/dev/null; then
+		LOG_CONTENT=$(dd if="$file" bs=1 skip="$pos" count="$count" 2>/dev/null)
+		LOG_POS=$((pos + count))
+	else
+		LOG_POS="$size"
+	fi
+	LOG_SIZE="$size"
+}
+
+backup_choices() {
+	local workdir="$1" seen=' filters stats.db querylog.json sessions.db ' result='filters stats.db querylog.json sessions.db' entry
+	if [ -d "$workdir/data" ]; then
+		for entry in "$workdir"/data/*; do
+			[ -e "$entry" ] || continue
+			entry=${entry##*/}
+			case " $seen " in *" $entry "*) ;; *) seen="$seen$entry "; result="$result $entry" ;; esac
+		done
+	fi
+	printf '%s\n' "$result"
+}
+
+build_template() {
+	local dns_lines='' cnt nameserver line resolv
+	resolv=$(uci -q get dhcp.@dnsmasq[0].resolvfile 2>/dev/null)
+	[ -n "$resolv" ] || resolv='/tmp/resolv.conf.d/resolv.conf.auto'
+	[ -r "$resolv" ] || resolv='/tmp/resolv.conf.auto'
+	if [ -r "$resolv" ]; then
+		while IFS= read -r cnt; do
+			nameserver=$(printf '%s\n' "$cnt" | sed -n 's/^[^#]*nameserver[[:space:]]\+\([^[:space:]]\+\).*$/\1/p')
+			[ -n "$nameserver" ] && dns_lines="$dns_lines  - $nameserver\n"
+		done < "$resolv"
+	fi
+	[ -r "$TEMPLATE_FILE" ] || return 1
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in '#bootstrap_dns'|'#upstream_dns') printf '%b' "$dns_lines" ;; *) printf '%s\n' "$line" ;; esac
+	done < "$TEMPLATE_FILE"
+}
+
+json_status() {
+	local binpath configpath workdir logfile httpport redirect version dns_port arch channel
+	binpath=$(get_option binpath "$DEFAULT_BINPATH")
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	workdir=$(get_option workdir "$DEFAULT_WORKDIR")
+	logfile=$(get_option logfile '')
+	httpport=$(get_option httpport 3000)
+	redirect=$(get_option redirect none)
+	arch=$(normalize_arch "$(get_option downloadarch "$(get_option arch auto)")")
+	channel=$(normalize_channel "$(get_option release_channel "$(get_option tagname release)")")
+	version=$(resolve_core_version "$binpath" 2>/dev/null)
+	dns_port=$(resolve_dns_port "$configpath" 2>/dev/null)
+	json_init
+	json_add_string binpath "$binpath"
+	json_add_string configpath "$configpath"
+	json_add_string workdir "$workdir"
+	json_add_string logfile "$logfile"
+	json_add_string httpport "$httpport"
+	json_add_string redirect "$redirect"
+	json_add_string version "${version:-unknown}"
+	json_add_string dns_port "${dns_port:-unknown}"
+	json_add_string downloadarch "$arch"
+	json_add_string release_channel "$channel"
+	json_bool enabled "$(get_option enabled 0)"
+	json_bool running "$(pgrep -f "$binpath" >/dev/null 2>&1 && echo 1 || echo 0)"
+	json_bool redirected "$([ "$(cat /var/run/AdGredir 2>/dev/null)" = 1 ] && echo 1 || echo 0)"
+	json_bool core_ready "$([ -x "$binpath" ] && echo 1 || echo 0)"
+	json_bool config_ready "$([ -r "$configpath" ] && echo 1 || echo 0)"
+	json_bool workdir_ready "$([ -d "$workdir" ] && echo 1 || echo 0)"
+	json_bool update_running "$([ -e /var/run/update_core ] && echo 1 || pgrep -f '/usr/share/AdGuardHome/update_core.sh' >/dev/null 2>&1 && echo 1 || echo 0)"
+	json_bool gfw_added "$(grep -qm 1 programadd "$configpath" 2>/dev/null && echo 1 || echo 0)"
+	json_bool ipset_added "$(grep -qm 1 'ipset_file:.*ipset.txt' "$configpath" 2>/dev/null && echo 1 || echo 0)"
+	json_dump
+}
+
+json_meta() {
+	local workdir links choices one
+	workdir=$(get_option workdir "$DEFAULT_WORKDIR")
+	links=$(safe_cat "$LINKS_FILE")
+	choices=$(backup_choices "$workdir")
+	json_init
+	json_add_string links "$links"
+	json_add_array backup_choices
+	for one in $choices; do json_add_string '' "$one"; done
+	json_close_array
+	json_add_array release_channels
+	for one in release beta github custom; do json_add_string '' "$one"; done
+	json_close_array
+	json_add_array download_arches
+	for one in auto 386 amd64 armv5 armv6 armv7 arm64 mips_softfloat mips64_softfloat mipsle_softfloat mips64le_softfloat ppc64le; do json_add_string '' "$one"; done
+	json_close_array
+	json_dump
+}
+
+json_yaml() {
+	local configpath content source test_log
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	if [ -r "$TEMP_CONFIG" ]; then source=temp; content=$(safe_cat "$TEMP_CONFIG"); elif [ -r "$configpath" ]; then source=config; content=$(safe_cat "$configpath"); else source=template; content=$(build_template); fi
+	test_log=$(safe_cat "$TEMP_TEST_LOG")
+	json_init
+	json_add_string source "$source"
+	json_add_string content "$content"
+	json_add_string test_log "$test_log"
+	json_dump
+}
+
+save_yaml() {
+	local input content configpath binpath
+	input=$(cat)
+	json_load "$input" >/dev/null 2>&1
+	json_get_var content content
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	binpath=$(get_option binpath "$DEFAULT_BINPATH")
+	mkdir -p "${configpath%/*}" 2>/dev/null
+	printf '%s\n' "$content" > "$TEMP_CONFIG"
+	if [ -x "$binpath" ]; then
+		if ! "$binpath" -c "$TEMP_CONFIG" --check-config > "$TEMP_TEST_LOG" 2>&1; then
+			json_init; json_add_boolean ok 0; json_add_string error "$(safe_cat "$TEMP_TEST_LOG")"; json_dump; return
+		fi
+	fi
+	mv -f "$TEMP_CONFIG" "$configpath"
+	rm -f "$TEMP_TEST_LOG"
+	/etc/init.d/AdGuardHome reload >/dev/null 2>&1 &
+	json_init; json_add_boolean ok 1; json_dump
+}
+
+get_log() {
+	local input scope pos file running logfile
+	input=$(cat)
+	json_load "$input" >/dev/null 2>&1
+	json_get_var scope scope
+	json_get_var pos position
+	[ -n "$scope" ] || scope=runtime
+	if [ "$scope" = update ]; then
+		file="$UPDATE_LOG"
+		running=$([ -e /var/run/update_core ] && echo 1 || echo 0)
+	else
+		logfile=$(get_option logfile '')
+		if [ "$logfile" = syslog ]; then
+			if [ -x "$SYSLOG_SCRIPT" ] && ! pgrep -f '/usr/share/AdGuardHome/getsyslog.sh' >/dev/null 2>&1; then
+				"$SYSLOG_SCRIPT" >/dev/null 2>&1 &
+			fi
+			printf 1 > /var/run/AdGuardHomesyslog 2>/dev/null
+			file="$SYSLOG_TEMP"
+		else
+			file="$logfile"
+		fi
+		running=0
+	fi
+	read_log_window "$file" "$pos" 2048000 || true
+	json_init
+	json_add_string scope "$scope"
+	json_add_string content "$LOG_CONTENT"
+	json_add_int position "$LOG_POS"
+	json_add_int size "$LOG_SIZE"
+	json_bool running "$running"
+	json_dump
+}
+
+clear_log() {
+	local input scope logfile file
+	input=$(cat)
+	json_load "$input" >/dev/null 2>&1
+	json_get_var scope scope
+	if [ "$scope" = update ]; then file="$UPDATE_LOG"; else logfile=$(get_option logfile ''); [ "$logfile" = syslog ] && file="$SYSLOG_TEMP" || file="$logfile"; fi
+	[ -n "$file" ] && : > "$file" 2>/dev/null
+	json_init; json_add_boolean ok 1; json_dump
+}
+
+start_update() {
+	local input force arg
+	input=$(cat)
+	json_load "$input" >/dev/null 2>&1
+	json_get_var force force
+	[ "$force" = 1 ] || [ "$force" = true ] && arg=force || arg=''
+	if [ -n "$arg" ]; then
+		pkill -f '/usr/share/AdGuardHome/update_core.sh' >/dev/null 2>&1 || true
+		rm -f /var/run/update_core
+	fi
+	: > "$UPDATE_LOG"
+	sh "$UPDATE_SCRIPT" $arg > "$UPDATE_LOG" 2>&1 &
+	json_init; json_add_boolean ok 1; json_dump
+}
+
+gfw_action() {
+	local input action script arg
+	input=$(cat)
+	json_load "$input" >/dev/null 2>&1
+	json_get_var action action
+	case "$action" in add) script="$GFW_SCRIPT"; arg='' ;; del) script="$GFW_SCRIPT"; arg=del ;; ipset_add) script="$GFW_IPSET_SCRIPT"; arg='' ;; ipset_del) script="$GFW_IPSET_SCRIPT"; arg=del ;; *) json_init; json_add_boolean ok 0; json_add_string error 'invalid action'; json_dump; return ;; esac
+	sh "$script" $arg > /tmp/AdGuardHome_gfw.log 2>&1 &
+	json_init; json_add_boolean ok 1; json_dump
+}
+
+set_links() {
+	local input content channel arch legacy_arch
+	input=$(cat)
+	json_load "$input" >/dev/null 2>&1
+	json_get_var content content
+	json_get_var channel channel
+	json_get_var arch download_arch
+	channel=$(normalize_channel "$channel")
+	arch=$(normalize_arch "$arch")
+	mkdir -p "${LINKS_FILE%/*}" 2>/dev/null
+	printf '%s\n' "$content" | sed 's/\r$//' > "$LINKS_FILE"
+	case "$arch" in 386) legacy_arch=386 ;; amd64) legacy_arch=amd64 ;; arm64) legacy_arch=arm64 ;; ppc64le) legacy_arch=ppc64le ;; auto) legacy_arch='' ;; *) legacy_arch="$arch" ;; esac
+	uci set "$CONFIG_NAME.$CONFIG_NAME.release_channel=$channel"
+	uci set "$CONFIG_NAME.$CONFIG_NAME.tagname=$channel"
+	uci set "$CONFIG_NAME.$CONFIG_NAME.downloadarch=$arch"
+	uci set "$CONFIG_NAME.$CONFIG_NAME.arch=$legacy_arch"
+	uci commit "$CONFIG_NAME"
+	json_init; json_add_boolean ok 1; json_dump
+}
+
+list_methods() {
+	cat <<'JSON'
+{"getStatus":{},"getMeta":{},"getYaml":{},"getTemplateConfig":{},"saveYaml":{"content":"string"},"discardYaml":{},"getLog":{"scope":"string","position":"number"},"clearLog":{"scope":"string"},"startUpdate":{"force":"boolean"},"gfwAction":{"action":"string"},"setLinks":{"content":"string","channel":"string","download_arch":"string"}}
+JSON
+}
+
+case "$1" in
+	list) list_methods ;;
+	call)
+		case "$2" in
+			getStatus) json_status ;;
+			getMeta) json_meta ;;
+			getYaml) json_yaml ;;
+			getTemplateConfig) json_init; json_add_string content "$(build_template)"; json_dump ;;
+			saveYaml) save_yaml ;;
+			discardYaml) rm -f "$TEMP_CONFIG" "$TEMP_TEST_LOG"; json_init; json_add_boolean ok 1; json_dump ;;
+			getLog) get_log ;;
+			clearLog) clear_log ;;
+			startUpdate) start_update ;;
+			gfwAction) gfw_action ;;
+			setLinks) set_links ;;
+			*) json_init; json_add_string error 'unknown method'; json_dump; exit 1 ;;
+		esac
+		;;
+	*) exit 1 ;;
+esac
