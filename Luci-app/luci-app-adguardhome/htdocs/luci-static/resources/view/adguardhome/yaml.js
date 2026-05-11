@@ -97,25 +97,25 @@ function ensureCodeMirror() {
 }
 
 var pageStyle = [
-	'.adh-editor-page { display:grid; gap:18px; }',
-	'.adh-editor-hero { position:relative; overflow:hidden; border-radius:24px; padding:26px; color:#f5f8f6; background:linear-gradient(135deg,#102d4d 0%,#1f5f74 45%,#6b8140 100%); box-shadow:0 18px 38px rgba(14,30,37,.14); }',
-	'.adh-editor-hero:before { content:""; position:absolute; left:-60px; bottom:-90px; width:240px; height:240px; border-radius:50%; background:radial-gradient(circle, rgba(159,231,204,.24), rgba(159,231,204,0)); }',
-	'.adh-editor-hero h2 { position:relative; z-index:1; margin:0; font-size:31px; font-weight:700; color:#fff; }',
-	'.adh-editor-hero p { position:relative; z-index:1; margin:10px 0 0; max-width:62rem; line-height:1.75; color:rgba(245,248,246,.88); }',
+	'.adh-editor-page { --adh-ink:#1f2a55; --adh-muted:#66718f; --adh-line:#dbe3f0; --adh-panel:#ffffff; --adh-blue:#5b6ee1; --adh-green:#1f9b62; --adh-red:#d84b63; display:grid; gap:18px; color:var(--adh-ink); }',
+	'.adh-editor-hero { position:relative; overflow:hidden; border-radius:22px; padding:26px; color:var(--adh-ink); background:linear-gradient(135deg,#f8fbff 0%,#edf3fb 100%); border:1px solid var(--adh-line); box-shadow:0 18px 40px rgba(35,48,85,.08); }',
+	'.adh-editor-hero:before { content:""; position:absolute; left:-60px; bottom:-90px; width:240px; height:240px; border-radius:50%; background:radial-gradient(circle, rgba(91,110,225,.12), rgba(91,110,225,0)); }',
+	'.adh-editor-hero h2 { position:relative; z-index:1; display:inline; margin:0; padding:0; border:0; border-radius:0; background:transparent !important; box-shadow:none; font-size:31px; font-weight:800; color:#151d4a; }',
+	'.adh-editor-hero p { position:relative; z-index:1; margin:10px 0 0; max-width:62rem; line-height:1.75; color:var(--adh-muted); }',
 	'.adh-editor-chip-row { position:relative; z-index:1; display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }',
-	'.adh-editor-chip { display:inline-flex; align-items:center; padding:8px 13px; border-radius:999px; background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.12); font-size:12px; color:#fff; }',
-	'.adh-editor-card { border-radius:22px; border:1px solid rgba(22,54,62,.10); background:linear-gradient(180deg,#fcfdfb,#f1f6f3); box-shadow:0 16px 34px rgba(18,46,52,.10); overflow:hidden; }',
+	'.adh-editor-chip { display:inline-flex; align-items:center; padding:8px 13px; border-radius:999px; background:rgba(255,255,255,.72); border:1px solid var(--adh-line); font-size:12px; font-weight:700; color:#34405f; }',
+	'.adh-editor-card { border-radius:18px; border:1px solid var(--adh-line); background:var(--adh-panel); box-shadow:0 12px 30px rgba(35,48,85,.06); overflow:hidden; }',
 	'.adh-editor-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; padding:18px 20px; border-bottom:1px solid rgba(22,54,62,.08); }',
 	'.adh-editor-toolbar-left, .adh-editor-toolbar-right { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }',
 	'.adh-editor-shell { padding:20px; }',
 	'.adh-editor-textarea { width:100%; min-height:560px; }',
-	'.adh-editor-note { padding:16px 20px 20px; color:#4d676f; line-height:1.75; }',
+	'.adh-editor-note { padding:16px 20px 20px; color:var(--adh-muted); line-height:1.75; }',
 	'.adh-inline-status { margin-top:0; padding:12px 14px; border-radius:14px; font-size:13px; line-height:1.7; }',
 	'.adh-inline-status-info { background:rgba(29,91,102,.08); color:#204d56; }',
 	'.adh-inline-status-success { background:rgba(56,158,94,.10); color:#19643b; }',
 	'.adh-inline-status-warning { background:rgba(214,149,39,.12); color:#8e5f11; }',
 	'.adh-inline-status-error { background:rgba(209,73,91,.12); color:#8e2f3f; }',
-	'.adh-editor-output { margin:18px 20px 20px; padding:16px; border-radius:16px; background:#111b22; color:#d7e7de; font:12px/1.7 Consolas, Monaco, monospace; white-space:pre-wrap; word-break:break-word; min-height:110px; }',
+	'.adh-editor-output { margin:18px 20px 20px; padding:16px; border-radius:16px; background:#111827; color:#d7e7de; font:12px/1.7 Consolas, Monaco, monospace; white-space:pre-wrap; word-break:break-word; min-height:110px; }',
 	'.CodeMirror { height:auto; min-height:560px; border-radius:18px; border:1px solid rgba(18,39,50,.22); font-size:13px; line-height:1.7; }'
 ].join('\n');
 
