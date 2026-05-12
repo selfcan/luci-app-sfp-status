@@ -228,7 +228,7 @@ get_log() {
 		running=$([ -e /var/run/update_core ] && echo 1 || echo 0)
 	else
 		logfile=$(get_option logfile '')
-		if [ "$logfile" = syslog ]; then
+		if [ -z "$logfile" ] || [ "$logfile" = syslog ]; then
 			if [ -x "$SYSLOG_SCRIPT" ] && ! pgrep -f '/usr/share/AdGuardHome/getsyslog.sh' >/dev/null 2>&1; then
 				"$SYSLOG_SCRIPT" >/dev/null 2>&1 &
 			fi
@@ -254,7 +254,16 @@ clear_log() {
 	input=$(cat)
 	json_load "$input" >/dev/null 2>&1
 	json_get_var scope scope
-	if [ "$scope" = update ]; then file="$UPDATE_LOG"; else logfile=$(get_option logfile ''); [ "$logfile" = syslog ] && file="$SYSLOG_TEMP" || file="$logfile"; fi
+	if [ "$scope" = update ]; then
+		file="$UPDATE_LOG"
+	else
+		logfile=$(get_option logfile '')
+		if [ -z "$logfile" ] || [ "$logfile" = syslog ]; then
+			file="$SYSLOG_TEMP"
+		else
+			file="$logfile"
+		fi
+	fi
 	[ -n "$file" ] && : > "$file" 2>/dev/null
 	json_init; json_add_boolean ok 1; json_dump
 }

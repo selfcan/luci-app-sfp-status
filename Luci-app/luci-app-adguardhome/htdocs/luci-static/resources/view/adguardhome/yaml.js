@@ -81,27 +81,50 @@ var style = [
 
 return view.extend({
 	load: function() {
-		return safeCall(callGetYaml(), { content: '', test_log: '' });
+		return Promise.all([
+			safeCall(callGetYaml(), { content: '', test_log: '', source: 'template' }),
+			safeCall(callGetTemplate(), { content: '' })
+		]);
 	},
 	render: function(data) {
-		var rpcError = data._rpc_error;
-		var textarea = E('textarea', {}, data.content || '');
-		var statusBox = E('div', { 'class': 'agh-status' }, rpcError ? actionError(rpcError, t('YAML backend unavailable', 'YAML 后端不可用')) : (data.test_log || t('Ready.', '就绪。')));
+		var yamlData = Array.isArray(data) ? (data[0] || {}) : (data || {});
+		var templateData = Array.isArray(data) ? (data[1] || {}) : {};
+		var rpcError = yamlData._rpc_error;
+		var useTemplateDefault = !rpcError && yamlData.source !== 'temp' && !templateData._rpc_error;
+		var showingTemplate = useTemplateDefault;
+		var hasCurrentFile = yamlData.source === 'config';
+		var textarea = E('textarea', {}, useTemplateDefault ? (templateData.content || '') : (yamlData.content || ''));
+		var statusBox = E('div', { 'class': 'agh-status' }, rpcError ? actionError(rpcError, t('YAML backend unavailable', 'YAML 后端不可用')) : (yamlData.test_log || (useTemplateDefault ? t('Template loaded by default.', '已默认载入模板。') : t('Ready.', '就绪。'))));
 		var editor = null;
 		var saveButton = E('button', { 'class': 'btn cbi-button cbi-button-action', 'disabled': rpcError ? 'disabled' : null }, t('Save & Apply', '保存并应用'));
 		var templateButton = E('button', { 'class': 'btn cbi-button', 'disabled': rpcError ? 'disabled' : null }, t('Use template', '使用模板'));
-		var discardButton = E('button', { 'class': 'btn cbi-button', 'disabled': rpcError ? 'disabled' : null }, t('Discard temporary', '丢弃临时修改'));
+		var discardButton = E('button', { 'class': 'btn cbi-button', 'disabled': rpcError ? 'disabled' : null }, '');
 
 		function value() { return editor ? editor.getValue() : textarea.value; }
 		function setValue(content) { editor ? editor.setValue(content || '') : textarea.value = content || ''; }
 		function setStatus(message) { statusBox.textContent = message; }
+		function updateDiscardButton() {
+			discardButton.textContent = showingTemplate && hasCurrentFile
+				? t('Load current file', '载入当前文件')
+				: t('Discard temporary', '丢弃临时修改');
+		}
 
 		if (rpcError)
 			textarea.setAttribute('readonly', 'readonly');
 
+		updateDiscardButton();
+
 		saveButton.addEventListener('click', function() {
 			callSaveYaml(value()).then(function(res) {
-				setStatus(res.ok ? t('YAML saved and service reload scheduled.', 'YAML 已保存，并已调度服务重载。') : (res.error || t('Validation failed.', '校验失败。')));
+				if (res.ok) {
+					showingTemplate = false;
+					hasCurrentFile = true;
+					updateDiscardButton();
+					setStatus(t('YAML saved and service reload scheduled.', 'YAML 已保存，并已调度服务重载。'));
+				}
+				else {
+					setStatus(res.error || t('Validation failed.', '校验失败。'));
+				}
 			}).catch(function(err) {
 				setStatus(actionError(err, t('Saving YAML failed', '保存 YAML 失败')));
 			});
@@ -110,6 +133,8 @@ return view.extend({
 		templateButton.addEventListener('click', function() {
 			callGetTemplate().then(function(res) {
 				setValue(res.content || '');
+				showingTemplate = true;
+				updateDiscardButton();
 				setStatus(t('Template loaded.', '模板已载入。'));
 			}).catch(function(err) {
 				setStatus(actionError(err, t('Loading template failed', '加载模板失败')));
@@ -121,7 +146,15 @@ return view.extend({
 				return callGetYaml();
 			}).then(function(res) {
 				setValue(res.content || '');
-				setStatus(t('Temporary YAML changes discarded.', '临时 YAML 修改已丢弃。'));
+				showingTemplate = res.source === 'template';
+				hasCurrentFile = res.source === 'config';
+				updateDiscardButton();
+				if (res.source === 'config')
+					setStatus(t('Current YAML loaded.', '已载入当前 YAML。'));
+				else if (res.source === 'template')
+					setStatus(t('Template loaded.', '模板已载入。'));
+				else
+					setStatus(t('Temporary YAML changes discarded.', '临时 YAML 修改已丢弃。'));
 			}).catch(function(err) {
 				setStatus(actionError(err, t('Discarding YAML changes failed', '丢弃 YAML 修改失败')));
 			});
