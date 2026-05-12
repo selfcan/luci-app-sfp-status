@@ -3,6 +3,7 @@
 'require rpc';
 
 var callGetYaml = rpc.declare({ object: 'luci.adguardhome', method: 'getYaml', expect: { '': {} } });
+var callGetCurrentYaml = rpc.declare({ object: 'luci.adguardhome', method: 'getCurrentYaml', expect: { '': {} } });
 var callGetTemplate = rpc.declare({ object: 'luci.adguardhome', method: 'getTemplateConfig', expect: { '': {} } });
 var callSaveYaml = rpc.declare({ object: 'luci.adguardhome', method: 'saveYaml', params: [ 'content' ], expect: { '': {} } });
 var callDiscardYaml = rpc.declare({ object: 'luci.adguardhome', method: 'discardYaml', expect: { '': {} } });
@@ -86,7 +87,6 @@ return view.extend({
 	render: function(data) {
 		var yamlData = data || {};
 		var rpcError = yamlData._rpc_error;
-		var currentContent = yamlData.current_exists ? (yamlData.current_content || '') : '';
 		var useTemplateDefault = !rpcError && yamlData.source === 'template';
 		var showingTemplate = useTemplateDefault;
 		var hasCurrentFile = !!yamlData.current_exists;
@@ -114,7 +114,6 @@ return view.extend({
 		saveButton.addEventListener('click', function() {
 			callSaveYaml(value()).then(function(res) {
 				if (res.ok) {
-					currentContent = value();
 					showingTemplate = false;
 					hasCurrentFile = true;
 					updateDiscardButton();
@@ -141,10 +140,15 @@ return view.extend({
 
 		discardButton.addEventListener('click', function() {
 			if (showingTemplate && hasCurrentFile) {
-				setValue(currentContent);
-				showingTemplate = false;
-				updateDiscardButton();
-				setStatus(t('Current YAML loaded.', '已载入当前 YAML。'));
+				callGetCurrentYaml().then(function(res) {
+					setValue(res.content || '');
+					showingTemplate = false;
+					hasCurrentFile = !!res.current_exists;
+					updateDiscardButton();
+					setStatus(t('Current YAML loaded.', '已载入当前 YAML。'));
+				}).catch(function(err) {
+					setStatus(actionError(err, t('Loading current YAML failed', '载入当前 YAML 失败')));
+				});
 				return;
 			}
 
@@ -152,7 +156,6 @@ return view.extend({
 				return callGetYaml();
 			}).then(function(res) {
 				setValue(res.content || '');
-				currentContent = res.current_exists ? (res.current_content || '') : '';
 				showingTemplate = res.source === 'template';
 				hasCurrentFile = !!res.current_exists;
 				updateDiscardButton();

@@ -87,7 +87,10 @@ read_log_window() {
 	size=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
 	case "$size" in ''|*[!0-9]*) size=0 ;; esac
 	case "$pos" in ''|*[!0-9]*) pos=0 ;; esac
-	case "$bytes" in ''|*[!0-9]*) bytes=2048000 ;; esac
+	case "$bytes" in ''|*[!0-9]*) bytes=131072 ;; esac
+	if [ "$pos" -eq 0 ] 2>/dev/null && [ "$size" -gt "$bytes" ] 2>/dev/null; then
+		pos=$((size - bytes))
+	fi
 	[ "$pos" -le "$size" ] 2>/dev/null || pos=0
 	count=$((size - pos))
 	[ "$count" -le "$bytes" ] 2>/dev/null || count="$bytes"
@@ -185,14 +188,10 @@ json_meta() {
 }
 
 json_yaml() {
-	local configpath content source test_log current_content current_exists template_content
+	local configpath content source test_log current_exists template_content
 	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
 	current_exists=0
-	current_content=''
-	if [ -r "$configpath" ]; then
-		current_exists=1
-		current_content=$(safe_cat "$configpath")
-	fi
+	[ -r "$configpath" ] && current_exists=1
 	if [ -r "$TEMP_CONFIG" ]; then
 		source=temp
 		content=$(safe_cat "$TEMP_CONFIG")
@@ -201,7 +200,7 @@ json_yaml() {
 		content="$template_content"
 	elif [ "$current_exists" = 1 ]; then
 		source=config
-		content="$current_content"
+		content=$(safe_cat "$configpath")
 	else
 		source=template
 		content=''
@@ -211,8 +210,17 @@ json_yaml() {
 	json_add_string source "$source"
 	json_add_string content "$content"
 	json_bool current_exists "$current_exists"
-	json_add_string current_content "$current_content"
 	json_add_string test_log "$test_log"
+	json_dump
+}
+
+json_current_yaml() {
+	local configpath content
+	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
+	content=$(safe_cat "$configpath")
+	json_init
+	json_bool current_exists "$([ -r "$configpath" ] && echo 1 || echo 0)"
+	json_add_string content "$content"
 	json_dump
 }
 
@@ -259,7 +267,7 @@ get_log() {
 		fi
 		running=0
 	fi
-	read_log_window "$file" "$pos" 2048000 || true
+	read_log_window "$file" "$pos" 131072 || true
 	json_init
 	json_add_string scope "$scope"
 	json_add_string content "$LOG_CONTENT"
@@ -336,6 +344,7 @@ set_links() {
 list_methods() {
 	cat <<'JSON'
 {"getStatus":{},"getMeta":{},"getYaml":{},"getTemplateConfig":{},"saveYaml":{"content":"string"},"discardYaml":{},"getLog":{"scope":"string","position":"number"},"clearLog":{"scope":"string"},"startUpdate":{"force":"boolean"},"gfwAction":{"action":"string"},"setLinks":{"content":"string","channel":"string","download_arch":"string"}}
+{"getStatus":{},"getMeta":{},"getYaml":{},"getCurrentYaml":{},"getTemplateConfig":{},"saveYaml":{"content":"string"},"discardYaml":{},"getLog":{"scope":"string","position":"number"},"clearLog":{"scope":"string"},"startUpdate":{"force":"boolean"},"gfwAction":{"action":"string"},"setLinks":{"content":"string","channel":"string","download_arch":"string"}}
 JSON
 }
 
@@ -346,6 +355,7 @@ case "$1" in
 			getStatus) json_status ;;
 			getMeta) json_meta ;;
 			getYaml) json_yaml ;;
+			getCurrentYaml) json_current_yaml ;;
 			getTemplateConfig) json_init; json_add_string content "$(build_template)"; json_dump ;;
 			saveYaml) save_yaml ;;
 			discardYaml) rm -f "$TEMP_CONFIG" "$TEMP_TEST_LOG"; json_init; json_add_boolean ok 1; json_dump ;;
