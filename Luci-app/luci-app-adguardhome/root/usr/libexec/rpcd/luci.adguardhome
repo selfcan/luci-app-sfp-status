@@ -87,19 +87,32 @@ read_log_window() {
 	size=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
 	case "$size" in ''|*[!0-9]*) size=0 ;; esac
 	case "$pos" in ''|*[!0-9]*) pos=0 ;; esac
-	case "$bytes" in ''|*[!0-9]*) bytes=131072 ;; esac
-	if [ "$pos" -eq 0 ] 2>/dev/null && [ "$size" -gt "$bytes" ] 2>/dev/null; then
-		pos=$((size - bytes))
-	fi
+	case "$bytes" in ''|*[!0-9]*) bytes=32768 ;; esac
 	[ "$pos" -le "$size" ] 2>/dev/null || pos=0
 	count=$((size - pos))
 	[ "$count" -le "$bytes" ] 2>/dev/null || count="$bytes"
 	if [ "$count" -gt 0 ] 2>/dev/null; then
-		LOG_CONTENT=$(dd if="$file" bs=1 skip="$pos" count="$count" 2>/dev/null)
+		LOG_CONTENT=$(dd if="$file" bs=1 skip="$pos" count="$count" 2>/dev/null | tr -d '\000')
 		LOG_POS=$((pos + count))
 	else
 		LOG_POS="$size"
 	fi
+	LOG_SIZE="$size"
+}
+
+read_log_snapshot() {
+	local file="$1" bytes="$2" size
+	LOG_CONTENT=''
+	LOG_POS=0
+	LOG_SIZE=0
+	[ -r "$file" ] || return 1
+	size=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
+	case "$size" in ''|*[!0-9]*) size=0 ;; esac
+	case "$bytes" in ''|*[!0-9]*) bytes=32768 ;; esac
+	if [ "$size" -gt 0 ] 2>/dev/null; then
+		LOG_CONTENT=$(tail -c "$bytes" "$file" 2>/dev/null | tr -d '\000')
+	fi
+	LOG_POS="$size"
 	LOG_SIZE="$size"
 }
 
@@ -267,7 +280,11 @@ get_log() {
 		fi
 		running=0
 	fi
-	read_log_window "$file" "$pos" 131072 || true
+	if [ "$pos" -eq 0 ] 2>/dev/null; then
+		read_log_snapshot "$file" 32768 || true
+	else
+		read_log_window "$file" "$pos" 32768 || true
+	fi
 	json_init
 	json_add_string scope "$scope"
 	json_add_string content "$LOG_CONTENT"
@@ -343,7 +360,6 @@ set_links() {
 
 list_methods() {
 	cat <<'JSON'
-{"getStatus":{},"getMeta":{},"getYaml":{},"getTemplateConfig":{},"saveYaml":{"content":"string"},"discardYaml":{},"getLog":{"scope":"string","position":"number"},"clearLog":{"scope":"string"},"startUpdate":{"force":"boolean"},"gfwAction":{"action":"string"},"setLinks":{"content":"string","channel":"string","download_arch":"string"}}
 {"getStatus":{},"getMeta":{},"getYaml":{},"getCurrentYaml":{},"getTemplateConfig":{},"saveYaml":{"content":"string"},"discardYaml":{},"getLog":{"scope":"string","position":"number"},"clearLog":{"scope":"string"},"startUpdate":{"force":"boolean"},"gfwAction":{"action":"string"},"setLinks":{"content":"string","channel":"string","download_arch":"string"}}
 JSON
 }
