@@ -185,13 +185,33 @@ json_meta() {
 }
 
 json_yaml() {
-	local configpath content source test_log
+	local configpath content source test_log current_content current_exists template_content
 	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
-	if [ -r "$TEMP_CONFIG" ]; then source=temp; content=$(safe_cat "$TEMP_CONFIG"); elif [ -r "$configpath" ]; then source=config; content=$(safe_cat "$configpath"); else source=template; content=$(build_template); fi
+	current_exists=0
+	current_content=''
+	if [ -r "$configpath" ]; then
+		current_exists=1
+		current_content=$(safe_cat "$configpath")
+	fi
+	if [ -r "$TEMP_CONFIG" ]; then
+		source=temp
+		content=$(safe_cat "$TEMP_CONFIG")
+	elif template_content=$(build_template 2>/dev/null) && [ -n "$template_content" ]; then
+		source=template
+		content="$template_content"
+	elif [ "$current_exists" = 1 ]; then
+		source=config
+		content="$current_content"
+	else
+		source=template
+		content=''
+	fi
 	test_log=$(safe_cat "$TEMP_TEST_LOG")
 	json_init
 	json_add_string source "$source"
 	json_add_string content "$content"
+	json_bool current_exists "$current_exists"
+	json_add_string current_content "$current_content"
 	json_add_string test_log "$test_log"
 	json_dump
 }

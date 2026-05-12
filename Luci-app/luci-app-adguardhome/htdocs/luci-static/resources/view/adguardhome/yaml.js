@@ -81,19 +81,16 @@ var style = [
 
 return view.extend({
 	load: function() {
-		return Promise.all([
-			safeCall(callGetYaml(), { content: '', test_log: '', source: 'template' }),
-			safeCall(callGetTemplate(), { content: '' })
-		]);
+		return safeCall(callGetYaml(), { content: '', test_log: '', source: 'template', current_exists: false, current_content: '' });
 	},
 	render: function(data) {
-		var yamlData = Array.isArray(data) ? (data[0] || {}) : (data || {});
-		var templateData = Array.isArray(data) ? (data[1] || {}) : {};
+		var yamlData = data || {};
 		var rpcError = yamlData._rpc_error;
-		var useTemplateDefault = !rpcError && yamlData.source !== 'temp' && !templateData._rpc_error;
+		var currentContent = yamlData.current_exists ? (yamlData.current_content || '') : '';
+		var useTemplateDefault = !rpcError && yamlData.source === 'template';
 		var showingTemplate = useTemplateDefault;
-		var hasCurrentFile = yamlData.source === 'config';
-		var textarea = E('textarea', {}, useTemplateDefault ? (templateData.content || '') : (yamlData.content || ''));
+		var hasCurrentFile = !!yamlData.current_exists;
+		var textarea = E('textarea', {}, yamlData.content || '');
 		var statusBox = E('div', { 'class': 'agh-status' }, rpcError ? actionError(rpcError, t('YAML backend unavailable', 'YAML 后端不可用')) : (yamlData.test_log || (useTemplateDefault ? t('Template loaded by default.', '已默认载入模板。') : t('Ready.', '就绪。'))));
 		var editor = null;
 		var saveButton = E('button', { 'class': 'btn cbi-button cbi-button-action', 'disabled': rpcError ? 'disabled' : null }, t('Save & Apply', '保存并应用'));
@@ -117,6 +114,7 @@ return view.extend({
 		saveButton.addEventListener('click', function() {
 			callSaveYaml(value()).then(function(res) {
 				if (res.ok) {
+					currentContent = value();
 					showingTemplate = false;
 					hasCurrentFile = true;
 					updateDiscardButton();
@@ -142,12 +140,21 @@ return view.extend({
 		});
 
 		discardButton.addEventListener('click', function() {
+			if (showingTemplate && hasCurrentFile) {
+				setValue(currentContent);
+				showingTemplate = false;
+				updateDiscardButton();
+				setStatus(t('Current YAML loaded.', '已载入当前 YAML。'));
+				return;
+			}
+
 			callDiscardYaml().then(function() {
 				return callGetYaml();
 			}).then(function(res) {
 				setValue(res.content || '');
+				currentContent = res.current_exists ? (res.current_content || '') : '';
 				showingTemplate = res.source === 'template';
-				hasCurrentFile = res.source === 'config';
+				hasCurrentFile = !!res.current_exists;
 				updateDiscardButton();
 				if (res.source === 'config')
 					setStatus(t('Current YAML loaded.', '已载入当前 YAML。'));
