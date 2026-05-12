@@ -32,6 +32,47 @@ function safeCall(promise, fallback) {
 	});
 }
 
+
+function normalizeLogContent(content) {
+	return String(content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function createTerminalState() {
+	return { committed: '', line: '' };
+}
+
+function renderTerminalContent(state, content, reset) {
+	var source = String(content || '');
+	var committed = reset ? '' : state.committed;
+	var line = reset ? '' : state.line;
+	var index;
+
+	for (index = 0; index < source.length; index++) {
+		var chr = source.charAt(index);
+		var next = source.charAt(index + 1);
+
+		if (chr === '\r') {
+			if (next === '\n')
+				continue;
+			line = '';
+			continue;
+		}
+
+		if (chr === '\n') {
+			committed += line + '\n';
+			line = '';
+			continue;
+		}
+
+		line += chr;
+	}
+
+	state.committed = committed;
+	state.line = line;
+
+	return committed + line;
+}
+
 var style = [
 	'.agh-log{display:grid;gap:18px;color:#203042}',
 	'.agh-hero{border-radius:24px;padding:26px;color:#f7fbf8;background:linear-gradient(135deg,#143f46 0%,#1f6a5d 52%,#7d6828 100%);box-shadow:0 20px 42px rgba(15,38,48,.16)}',
@@ -49,14 +90,15 @@ var style = [
 
 return view.extend({
 	load: function() {
-		return safeCall(callGetLog('runtime', 0), { scope: 'runtime', position: 0, content: '', size: 0, running: false });
+		return Promise.resolve({ scope: 'runtime', position: 0, content: '', size: 0, running: false });
 	},
 	render: function(data) {
 		var scope = 'runtime';
 		var rpcError = data._rpc_error;
 		var positions = { runtime: Number(data.position || 0), update: 0 };
-		var output = E('pre', { 'class': 'agh-console' }, rpcError ? actionError(rpcError, t('Log backend unavailable', '日志后端不可用')) : (data.content || ''));
-		var status = E('div', { 'class': 'agh-status' }, rpcError ? actionError(rpcError, t('Log backend unavailable', '日志后端不可用')) : t('Runtime log loaded.', '运行日志已加载。'));
+		var terminalStates = { runtime: createTerminalState(), update: createTerminalState() };
+		var output = E('pre', { 'class': 'agh-console' }, rpcError ? actionError(rpcError, t('Log backend unavailable', '日志后端不可用')) : t('Loading current log…', '正在载入当前日志…'));
+		var status = E('div', { 'class': 'agh-status' }, rpcError ? actionError(rpcError, t('Log backend unavailable', '日志后端不可用')) : t('Loading runtime log…', '正在载入运行日志…'));
 		var runtimeTab = E('button', { 'class': 'agh-tab active', 'disabled': rpcError ? 'disabled' : null }, t('Runtime', '运行日志'));
 		var updateTab = E('button', { 'class': 'agh-tab', 'disabled': rpcError ? 'disabled' : null }, t('Update', '更新日志'));
 		var reloadButton = E('button', { 'class': 'btn cbi-button', 'disabled': rpcError ? 'disabled' : null }, t('Reload', '重新载入'));
@@ -64,10 +106,18 @@ return view.extend({
 
 		function appendLog(res, reset) {
 			positions[scope] = Number(res.position || positions[scope] || 0);
-			if (reset)
-				output.textContent = res.content || '';
-			else if (res.content)
-				output.textContent += res.content;
+
+			if (scope === 'update') {
+				output.textContent = renderTerminalContent(terminalStates.update, res.content, reset);
+			}
+			else {
+				var content = normalizeLogContent(res.content);
+				if (reset)
+					output.textContent = content;
+				else if (content)
+					output.textContent += content;
+			}
+
 			status.textContent = t('Size', '大小') + ': ' + (res.size || 0) + ' B' + (res.running ? ' · ' + t('Task running', '任务运行中') : '');
 			output.scrollTop = output.scrollHeight;
 		}
@@ -77,7 +127,17 @@ return view.extend({
 			runtimeTab.classList.toggle('active', scope === 'runtime');
 			updateTab.classList.toggle('active', scope === 'update');
 			positions[scope] = 0;
-			return callGetLog(scope, 0).then(function(res) { appendLog(res, true); });
+			terminalStates[scope] = createTerminalState();
+			output.textContent = t('Loading current log…', '正在载入当前日志…');
+			status.textContent = scope === 'update'
+				? t('Loading update log…', '正在载入更新日志…')
+				: t('Loading runtime log…', '正在载入运行日志…');
+			return callGetLog(scope, 0).then(function(res) {
+				appendLog(res, true);
+			}).catch(function(err) {
+				output.textContent = '';
+				status.textContent = actionError(err, t('Loading log failed', '载入日志失败'));
+			});
 		}
 
 		runtimeTab.addEventListener('click', function() { loadScope('runtime'); });
@@ -93,6 +153,7 @@ return view.extend({
 		clearButton.addEventListener('click', function() {
 			callClearLog(scope).then(function() {
 				positions[scope] = 0;
+				terminalStates[scope] = createTerminalState();
 				output.textContent = '';
 				status.textContent = t('Log cleared.', '日志已清空。');
 			}).catch(function(err) {
@@ -101,6 +162,7 @@ return view.extend({
 		});
 
 		if (!rpcError) {
+			loadScope('runtime');
 			poll.add(function() {
 				return callGetLog(scope, positions[scope] || 0).then(function(res) {
 					appendLog(res, false);

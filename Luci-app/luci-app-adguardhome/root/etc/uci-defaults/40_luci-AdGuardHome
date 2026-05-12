@@ -1,11 +1,26 @@
 #!/bin/sh
 
+normalize_binpath_value() {
+	local path="$1"
+	[ -n "$path" ] || path='/etc/config/adGuardConfig/AdGuardHome'
+	while [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	[ -n "$path" ] || path='/etc/config/adGuardConfig/AdGuardHome'
+	if [ -d "$path" ]; then
+		printf '%s/AdGuardHome\n' "$path"
+	else
+		printf '%s\n' "$path"
+	fi
+}
+
 configpath=$(uci -q get AdGuardHome.AdGuardHome.configpath 2>/dev/null)
 workdir=$(uci -q get AdGuardHome.AdGuardHome.workdir 2>/dev/null)
 binpath=$(uci -q get AdGuardHome.AdGuardHome.binpath 2>/dev/null)
 downloadarch=$(uci -q get AdGuardHome.AdGuardHome.downloadarch 2>/dev/null)
 release_channel=$(uci -q get AdGuardHome.AdGuardHome.release_channel 2>/dev/null)
 tagname=$(uci -q get AdGuardHome.AdGuardHome.tagname 2>/dev/null)
+binpath=$(normalize_binpath_value "$binpath")
 
 uci -q batch <<-EOF >/dev/null 2>&1
 	delete ucitrack.@AdGuardHome[-1]

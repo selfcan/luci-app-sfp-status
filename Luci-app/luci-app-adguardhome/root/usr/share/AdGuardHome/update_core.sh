@@ -20,6 +20,20 @@ get_uci() {
 	[ -n "$value" ] && printf '%s\n' "$value" || printf '%s\n' "$fallback"
 }
 
+resolve_binpath() {
+	local path="$1"
+	[ -n "$path" ] || path="$DEFAULT_BINPATH"
+	while [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	[ -n "$path" ] || path="$DEFAULT_BINPATH"
+	if [ -d "$path" ]; then
+		printf '%s/AdGuardHome\n' "$path"
+	else
+		printf '%s\n' "$path"
+	fi
+}
+
 setup_downloader() {
 	if command -v curl >/dev/null 2>&1; then
 		DOWNLOADER='curl'
@@ -113,8 +127,9 @@ prepare_links() {
 }
 
 run_update() {
-	local force="$1" binpath upxflag channel arch latest_ver now_ver url archive downloadbin success basename
-	binpath=$(get_uci binpath "$DEFAULT_BINPATH")
+	local force="$1" raw_binpath binpath upxflag channel arch latest_ver now_ver url archive downloadbin success basename
+	raw_binpath=$(get_uci binpath "$DEFAULT_BINPATH")
+	binpath=$(resolve_binpath "$raw_binpath")
 	upxflag=$(get_uci upxflag '')
 	channel=$(get_uci release_channel "$(get_uci tagname release)")
 	arch=$(normalize_arch "$(get_uci downloadarch "$(get_uci arch auto)")") || exit_update 1

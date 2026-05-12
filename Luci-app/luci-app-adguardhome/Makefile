@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-adguardhome
 PKG_VERSION:=1.8
-PKG_RELEASE:=5
+PKG_RELEASE:=9
 
 LUCI_TITLE:=LuCI app for AdGuard Home
 LUCI_DESCRIPTION:=Modern LuCI dashboard for AdGuard Home
@@ -56,7 +56,12 @@ if [ -z "$$IPKG_INSTROOT" ]; then
 	rmdir /usr/lib/lua/luci/view/AdGuardHome 2>/dev/null
 	uci -q get AdGuardHome.AdGuardHome.configpath >/dev/null 2>&1 || uci set AdGuardHome.AdGuardHome.configpath='/etc/config/adGuardConfig/AdGuardHome.yaml'
 	uci -q get AdGuardHome.AdGuardHome.workdir >/dev/null 2>&1 || uci set AdGuardHome.AdGuardHome.workdir='/etc/config/adGuardConfig/workspace'
-	uci -q get AdGuardHome.AdGuardHome.binpath >/dev/null 2>&1 || uci set AdGuardHome.AdGuardHome.binpath='/etc/config/adGuardConfig/AdGuardHome'
+	binpath="$$(uci -q get AdGuardHome.AdGuardHome.binpath 2>/dev/null)"
+	[ -n "$$binpath" ] || binpath='/etc/config/adGuardConfig/AdGuardHome'
+	while [ "$${binpath%/}" != "$$binpath" ]; do binpath="$${binpath%/}"; done
+	[ -n "$$binpath" ] || binpath='/etc/config/adGuardConfig/AdGuardHome'
+	[ -d "$$binpath" ] && binpath="$$binpath/AdGuardHome"
+	uci -q set AdGuardHome.AdGuardHome.binpath="$$binpath"
 	uci -q get AdGuardHome.AdGuardHome.downloadarch >/dev/null 2>&1 || uci set AdGuardHome.AdGuardHome.downloadarch='auto'
 	uci -q get AdGuardHome.AdGuardHome.release_channel >/dev/null 2>&1 || uci set AdGuardHome.AdGuardHome.release_channel='release'
 	uci -q commit AdGuardHome

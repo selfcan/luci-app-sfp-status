@@ -23,6 +23,20 @@ get_option() {
 	[ -n "$value" ] && printf '%s\n' "$value" || printf '%s\n' "$fallback"
 }
 
+resolve_binpath() {
+	local path="$1"
+	[ -n "$path" ] || path="$DEFAULT_BINPATH"
+	while [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	[ -n "$path" ] || path="$DEFAULT_BINPATH"
+	if [ -d "$path" ]; then
+		printf '%s/AdGuardHome\n' "$path"
+	else
+		printf '%s\n' "$path"
+	fi
+}
+
 json_bool() {
 	case "$2" in 1|true|yes|on) json_add_boolean "$1" 1 ;; *) json_add_boolean "$1" 0 ;; esac
 }
@@ -116,8 +130,9 @@ build_template() {
 }
 
 json_status() {
-	local binpath configpath workdir logfile httpport redirect version dns_port arch channel
-	binpath=$(get_option binpath "$DEFAULT_BINPATH")
+	local raw_binpath binpath configpath workdir logfile httpport redirect version dns_port arch channel
+	raw_binpath=$(get_option binpath "$DEFAULT_BINPATH")
+	binpath=$(resolve_binpath "$raw_binpath")
 	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
 	workdir=$(get_option workdir "$DEFAULT_WORKDIR")
 	logfile=$(get_option logfile '')
@@ -187,7 +202,7 @@ save_yaml() {
 	json_load "$input" >/dev/null 2>&1
 	json_get_var content content
 	configpath=$(get_option configpath "$DEFAULT_CONFIGPATH")
-	binpath=$(get_option binpath "$DEFAULT_BINPATH")
+	binpath=$(resolve_binpath "$(get_option binpath "$DEFAULT_BINPATH")")
 	mkdir -p "${configpath%/*}" 2>/dev/null
 	printf '%s\n' "$content" > "$TEMP_CONFIG"
 	if [ -x "$binpath" ]; then
