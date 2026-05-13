@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-adguardhome
 PKG_VERSION:=1.8
-PKG_RELEASE:=14
+PKG_RELEASE:=16
 
 LUCI_TITLE:=LuCI app for AdGuard Home
 LUCI_DESCRIPTION:=Modern LuCI dashboard for AdGuard Home
@@ -60,6 +60,8 @@ if [ -z "$$IPKG_INSTROOT" ]; then
 	[ -n "$$binpath" ] || binpath='/etc/config/adGuardConfig/AdGuardHome'
 	while [ "$${binpath%/}" != "$$binpath" ]; do binpath="$${binpath%/}"; done
 	[ -n "$$binpath" ] || binpath='/etc/config/adGuardConfig/AdGuardHome'
+	parent="$${binpath%/*}"
+	if [ "$${binpath##*/}" = 'AdGuardHome' ] && [ "$$parent" != "$$binpath" ] && [ "$${parent##*/}" = 'AdGuardHome' ] && [ -e "$$parent" ] && [ ! -d "$$parent" ]; then binpath="$$parent"; fi
 	[ -d "$$binpath" ] && binpath="$$binpath/AdGuardHome"
 	uci -q set AdGuardHome.AdGuardHome.binpath="$$binpath"
 	uci -q get AdGuardHome.AdGuardHome.downloadarch >/dev/null 2>&1 || uci set AdGuardHome.AdGuardHome.downloadarch='auto'

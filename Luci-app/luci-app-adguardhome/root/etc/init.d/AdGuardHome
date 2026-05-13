@@ -23,12 +23,16 @@ get_opt() {
 }
 
 resolve_binpath() {
-	local path="$1"
+	local path="$1" parent
 	[ -n "$path" ] || path="$DEFAULT_BINPATH"
 	while [ "${path%/}" != "$path" ]; do
 		path="${path%/}"
 	done
 	[ -n "$path" ] || path="$DEFAULT_BINPATH"
+	parent="${path%/*}"
+	if [ "${path##*/}" = 'AdGuardHome' ] && [ "$parent" != "$path" ] && [ "${parent##*/}" = 'AdGuardHome' ] && [ -e "$parent" ] && [ ! -d "$parent" ]; then
+		path="$parent"
+	fi
 	if [ -d "$path" ]; then
 		printf '%s/AdGuardHome\n' "$path"
 	else
@@ -239,8 +243,12 @@ force_reload() {
 
 get_tz() {
 	SET_TZ=''
-	[ -e /etc/localtime ] && return 0
-	[ -r /var/etc/TZ ] && SET_TZ=$(cat /var/etc/TZ 2>/dev/null)
+	if [ -r /etc/localtime ]; then
+		SET_TZ=':/etc/localtime'
+		return 0
+	fi
+	SET_TZ=$(uci -q get system.@system[0].zonename 2>/dev/null)
+	[ -n "$SET_TZ" ] || [ ! -r /var/etc/TZ ] || SET_TZ=$(cat /var/etc/TZ 2>/dev/null)
 	[ -n "$SET_TZ" ] || [ ! -r /etc/TZ ] || SET_TZ=$(cat /etc/TZ 2>/dev/null)
 }
 
@@ -297,7 +305,7 @@ write_keep_file() {
 }
 
 start_service() {
-	local enabled binpath configpath workdir httpport logfile verbose hashpass update args
+	local enabled binpath configpath workdir httpport logfile verbose hashpass update args ipset_file
 	config_load "$CONFIGURATION"
 	get_opt enabled enabled '0'
 	get_opt binpath binpath "$DEFAULT_BINPATH"
@@ -318,9 +326,19 @@ start_service() {
 	[ -n "$hashpass" ] && yaml_set 'users.password' "$hashpass" "$configpath" && uci -q set AdGuardHome.AdGuardHome.hashpass='' && uci -q commit AdGuardHome
 	auto_apply_gfw
 	[ -n "$(uci -q get AdGuardHome.AdGuardHome.backupfile 2>/dev/null)" ] && restore
-	if grep -q 'ipset.txt' "$configpath" 2>/dev/null; then
-		ipset list "$GFWSET" >/dev/null 2>&1 || ipset create "$GFWSET" hash:ip 2>/dev/null
-	fi
+	ipset_file=$(sed -n 's/^[[:space:]]*ipset_file:[[:space:]]*//p' "$configpath" 2>/dev/null | head -n 1)
+	case "$ipset_file" in
+		''|'""'|"''") ;;
+		*)
+			ipset_file=${ipset_file#\"}
+			ipset_file=${ipset_file%\"}
+			ipset_file=${ipset_file#\'}
+			ipset_file=${ipset_file%\'}
+			mkdir -p "${ipset_file%/*}"
+			: > "$ipset_file"
+			ipset list "$GFWSET" >/dev/null 2>&1 || ipset create "$GFWSET" hash:ip 2>/dev/null
+			;;
+	esac
 	write_keep_file
 	if [ ! -x "$binpath" ]; then
 		_do_redirect 0

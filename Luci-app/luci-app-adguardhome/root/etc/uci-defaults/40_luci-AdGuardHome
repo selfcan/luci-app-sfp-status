@@ -1,12 +1,16 @@
 #!/bin/sh
 
 normalize_binpath_value() {
-	local path="$1"
+	local path="$1" parent
 	[ -n "$path" ] || path='/etc/config/adGuardConfig/AdGuardHome'
 	while [ "${path%/}" != "$path" ]; do
 		path="${path%/}"
 	done
 	[ -n "$path" ] || path='/etc/config/adGuardConfig/AdGuardHome'
+	parent="${path%/*}"
+	if [ "${path##*/}" = 'AdGuardHome' ] && [ "$parent" != "$path" ] && [ "${parent##*/}" = 'AdGuardHome' ] && [ -e "$parent" ] && [ ! -d "$parent" ]; then
+		path="$parent"
+	fi
 	if [ -d "$path" ]; then
 		printf '%s/AdGuardHome\n' "$path"
 	else

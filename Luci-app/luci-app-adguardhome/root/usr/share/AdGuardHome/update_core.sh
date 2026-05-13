@@ -21,12 +21,16 @@ get_uci() {
 }
 
 resolve_binpath() {
-	local path="$1"
+	local path="$1" parent
 	[ -n "$path" ] || path="$DEFAULT_BINPATH"
 	while [ "${path%/}" != "$path" ]; do
 		path="${path%/}"
 	done
 	[ -n "$path" ] || path="$DEFAULT_BINPATH"
+	parent="${path%/*}"
+	if [ "${path##*/}" = 'AdGuardHome' ] && [ "$parent" != "$path" ] && [ "${parent##*/}" = 'AdGuardHome' ] && [ -e "$parent" ] && [ ! -d "$parent" ]; then
+		path="$parent"
+	fi
 	if [ -d "$path" ]; then
 		printf '%s/AdGuardHome\n' "$path"
 	else
@@ -133,7 +137,7 @@ run_update() {
 	upxflag=$(get_uci upxflag '')
 	channel=$(get_uci release_channel "$(get_uci tagname release)")
 	arch=$(normalize_arch "$(get_uci downloadarch "$(get_uci arch auto)")") || exit_update 1
-	mkdir -p "${binpath%/*}" "$WORK_DIR" /tmp/run
+	mkdir -p "${binpath%/*}" "$WORK_DIR" /tmp/run || { echo 'Failed to prepare binary directory.'; exit_update 1; }
 	rm -rf "$WORK_DIR"/*
 	setup_downloader || exit_update 1
 	echo 'Checking latest version...'

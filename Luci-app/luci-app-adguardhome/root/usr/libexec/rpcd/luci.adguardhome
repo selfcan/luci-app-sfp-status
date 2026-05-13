@@ -24,12 +24,16 @@ get_option() {
 }
 
 resolve_binpath() {
-	local path="$1"
+	local path="$1" parent
 	[ -n "$path" ] || path="$DEFAULT_BINPATH"
 	while [ "${path%/}" != "$path" ]; do
 		path="${path%/}"
 	done
 	[ -n "$path" ] || path="$DEFAULT_BINPATH"
+	parent="${path%/*}"
+	if [ "${path##*/}" = 'AdGuardHome' ] && [ "$parent" != "$path" ] && [ "${parent##*/}" = 'AdGuardHome' ] && [ -e "$parent" ] && [ ! -d "$parent" ]; then
+		path="$parent"
+	fi
 	if [ -d "$path" ]; then
 		printf '%s/AdGuardHome\n' "$path"
 	else
