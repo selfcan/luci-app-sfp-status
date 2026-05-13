@@ -106,6 +106,10 @@ return view.extend({
 
 		return root;
 	}
+	,
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });
 
 function card(label, value, cls) {
