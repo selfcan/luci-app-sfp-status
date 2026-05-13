@@ -18,6 +18,26 @@ normalize_binpath_value() {
 	fi
 }
 
+normalize_runtime_path() {
+	local path="$1" fallback="$2" binpath="$3" mode="$4" parent
+	[ -n "$path" ] || path="$fallback"
+	while [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	[ -n "$path" ] || path="$fallback"
+	case "$path" in
+		"$binpath"|"$binpath"/*) path="$fallback" ;;
+	esac
+	if [ "$mode" = 'dir' ] && [ -e "$path" ] && [ ! -d "$path" ]; then
+		path="$fallback"
+	fi
+	parent="${path%/*}"
+	if [ "$parent" != "$path" ] && [ -e "$parent" ] && [ ! -d "$parent" ]; then
+		path="$fallback"
+	fi
+	printf '%s\n' "$path"
+}
+
 configpath=$(uci -q get AdGuardHome.AdGuardHome.configpath 2>/dev/null)
 workdir=$(uci -q get AdGuardHome.AdGuardHome.workdir 2>/dev/null)
 binpath=$(uci -q get AdGuardHome.AdGuardHome.binpath 2>/dev/null)
@@ -25,6 +45,8 @@ downloadarch=$(uci -q get AdGuardHome.AdGuardHome.downloadarch 2>/dev/null)
 release_channel=$(uci -q get AdGuardHome.AdGuardHome.release_channel 2>/dev/null)
 tagname=$(uci -q get AdGuardHome.AdGuardHome.tagname 2>/dev/null)
 binpath=$(normalize_binpath_value "$binpath")
+configpath=$(normalize_runtime_path "$configpath" '/etc/config/adGuardConfig/AdGuardHome.yaml' "$binpath" file)
+workdir=$(normalize_runtime_path "$workdir" '/etc/config/adGuardConfig/workspace' "$binpath" dir)
 
 uci -q batch <<-EOF >/dev/null 2>&1
 	delete ucitrack.@AdGuardHome[-1]

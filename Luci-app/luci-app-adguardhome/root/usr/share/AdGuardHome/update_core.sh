@@ -40,6 +40,44 @@ resolve_binpath() {
 	fi
 }
 
+normalize_runtime_path() {
+	local path="$1" fallback="$2" binpath="$3" mode="$4" parent
+	[ -n "$path" ] || path="$fallback"
+	while [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	[ -n "$path" ] || path="$fallback"
+	case "$path" in
+		"$binpath"|"$binpath"/*) path="$fallback" ;;
+	esac
+	if [ "$mode" = 'dir' ] && [ -e "$path" ] && [ ! -d "$path" ]; then
+		path="$fallback"
+	fi
+	parent="${path%/*}"
+	if [ "$parent" != "$path" ] && [ -e "$parent" ] && [ ! -d "$parent" ]; then
+		path="$fallback"
+	fi
+	printf '%s\n' "$path"
+}
+
+resolve_configpath() {
+	normalize_runtime_path "$1" "$DEFAULT_CONFIGPATH" "$2" file
+}
+
+resolve_workdir() {
+	normalize_runtime_path "$1" "$DEFAULT_WORKDIR" "$2" dir
+}
+
+sync_runtime_paths() {
+	local raw_binpath="$1" binpath="$2" raw_configpath="$3" configpath="$4" raw_workdir="$5" workdir="$6"
+	if [ "$raw_binpath" != "$binpath" ] || [ "$raw_configpath" != "$configpath" ] || [ "$raw_workdir" != "$workdir" ]; then
+		uci -q set "$CONFIGURATION.$CONFIGURATION.binpath=$binpath"
+		uci -q set "$CONFIGURATION.$CONFIGURATION.configpath=$configpath"
+		uci -q set "$CONFIGURATION.$CONFIGURATION.workdir=$workdir"
+		uci -q commit "$CONFIGURATION"
+	fi
+}
+
 setup_downloader() {
 	if command -v curl >/dev/null 2>&1; then
 		DOWNLOADER='curl'
@@ -133,22 +171,26 @@ prepare_links() {
 }
 
 prepare_runtime_layout() {
-	local binpath="$1" configpath workdir
-	configpath=$(get_uci configpath "$DEFAULT_CONFIGPATH")
-	workdir=$(get_uci workdir "$DEFAULT_WORKDIR")
+	local binpath="$1" configpath="$2" workdir="$3"
 	mkdir -p "${binpath%/*}" "${configpath%/*}" "$workdir/data" || return 1
 	[ -d "$workdir" ] && [ -d "$workdir/data" ]
 }
 
 run_update() {
-	local force="$1" raw_binpath binpath upxflag channel arch latest_ver now_ver url archive downloadbin success basename enabled
+	local force="$1" raw_binpath raw_configpath raw_workdir binpath configpath workdir upxflag channel arch latest_ver now_ver url archive downloadbin success basename enabled
 	raw_binpath=$(get_uci binpath "$DEFAULT_BINPATH")
 	binpath=$(resolve_binpath "$raw_binpath")
+	raw_configpath=$(get_uci configpath "$DEFAULT_CONFIGPATH")
+	configpath=$(resolve_configpath "$raw_configpath" "$binpath")
+	raw_workdir=$(get_uci workdir "$DEFAULT_WORKDIR")
+	workdir=$(resolve_workdir "$raw_workdir" "$binpath")
 	upxflag=$(get_uci upxflag '')
 	channel=$(get_uci release_channel "$(get_uci tagname release)")
 	enabled=$(get_uci enabled '0')
 	arch=$(normalize_arch "$(get_uci downloadarch "$(get_uci arch auto)")") || exit_update 1
+	sync_runtime_paths "$raw_binpath" "$binpath" "$raw_configpath" "$configpath" "$raw_workdir" "$workdir"
 	mkdir -p "${binpath%/*}" "$WORK_DIR" /tmp/run || { echo 'Failed to prepare binary directory.'; exit_update 1; }
+	prepare_runtime_layout "$binpath" "$configpath" "$workdir" || { echo 'Failed to prepare runtime directories.'; exit_update 1; }
 	rm -rf "$WORK_DIR"/*
 	setup_downloader || exit_update 1
 	echo 'Checking latest version...'
@@ -191,7 +233,7 @@ run_update() {
 	chmod 0755 "$binpath"
 	rm -rf "$WORK_DIR"
 	rm -f "$RUN_FILE"
-	prepare_runtime_layout "$binpath" || { echo 'Failed to prepare runtime directories.'; exit_update 1; }
+	prepare_runtime_layout "$binpath" "$configpath" "$workdir" || { echo 'Failed to prepare runtime directories.'; exit_update 1; }
 	if [ "$enabled" = '1' ]; then
 		AGH_SKIP_UPDATE=1 /etc/init.d/AdGuardHome start >/dev/null 2>&1 || { echo 'Core updated, but failed to start service.'; exit_update 1; }
 	fi

@@ -40,6 +40,34 @@ resolve_binpath() {
 	fi
 }
 
+normalize_runtime_path() {
+	local path="$1" fallback="$2" binpath="$3" mode="$4" parent
+	[ -n "$path" ] || path="$fallback"
+	while [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	[ -n "$path" ] || path="$fallback"
+	case "$path" in
+		"$binpath"|"$binpath"/*) path="$fallback" ;;
+	esac
+	if [ "$mode" = 'dir' ] && [ -e "$path" ] && [ ! -d "$path" ]; then
+		path="$fallback"
+	fi
+	parent="${path%/*}"
+	if [ "$parent" != "$path" ] && [ -e "$parent" ] && [ ! -d "$parent" ]; then
+		path="$fallback"
+	fi
+	printf '%s\n' "$path"
+}
+
+resolve_configpath() {
+	normalize_runtime_path "$1" "$DEFAULT_CONFIGPATH" "$2" file
+}
+
+resolve_workdir() {
+	normalize_runtime_path "$1" "$DEFAULT_WORKDIR" "$2" dir
+}
+
 yaml_get() {
 	local key="$1" file="$2"
 	[ -r "$file" ] || return 1
@@ -305,19 +333,27 @@ write_keep_file() {
 }
 
 start_service() {
-	local enabled binpath configpath workdir httpport logfile verbose hashpass update args ipset_file skip_update
+	local enabled raw_binpath raw_configpath raw_workdir binpath configpath workdir httpport logfile verbose hashpass update args ipset_file skip_update
 	config_load "$CONFIGURATION"
 	get_opt enabled enabled '0'
-	get_opt binpath binpath "$DEFAULT_BINPATH"
-	binpath=$(resolve_binpath "$binpath")
-	get_opt configpath configpath "$DEFAULT_CONFIGPATH"
-	get_opt workdir workdir "$DEFAULT_WORKDIR"
+	get_opt binpath raw_binpath "$DEFAULT_BINPATH"
+	binpath=$(resolve_binpath "$raw_binpath")
+	get_opt configpath raw_configpath "$DEFAULT_CONFIGPATH"
+	configpath=$(resolve_configpath "$raw_configpath" "$binpath")
+	get_opt workdir raw_workdir "$DEFAULT_WORKDIR"
+	workdir=$(resolve_workdir "$raw_workdir" "$binpath")
 	get_opt httpport httpport '3000'
 	get_opt logfile logfile ''
 	get_opt verbose verbose '0'
 	get_opt hashpass hashpass ''
 	get_opt update update '1'
 	skip_update="${AGH_SKIP_UPDATE:-0}"
+	if [ "$raw_binpath" != "$binpath" ] || [ "$raw_configpath" != "$configpath" ] || [ "$raw_workdir" != "$workdir" ]; then
+		uci -q set AdGuardHome.AdGuardHome.binpath="$binpath"
+		uci -q set AdGuardHome.AdGuardHome.configpath="$configpath"
+		uci -q set AdGuardHome.AdGuardHome.workdir="$workdir"
+		uci -q commit AdGuardHome
+	fi
 	if ! mkdir -p "${binpath%/*}" "${configpath%/*}" "$workdir/data"; then
 		echo 'Failed to prepare runtime directories.' >&2
 		return 1
