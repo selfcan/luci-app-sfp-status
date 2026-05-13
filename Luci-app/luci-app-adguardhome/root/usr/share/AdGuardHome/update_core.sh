@@ -7,6 +7,8 @@ RUN_FILE='/var/run/update_core'
 ERROR_FILE='/var/run/update_core_error'
 WORK_DIR='/tmp/AdGuardHomeupdate'
 DEFAULT_BINPATH='/etc/config/adGuardConfig/AdGuardHome'
+DEFAULT_CONFIGPATH='/etc/config/adGuardConfig/AdGuardHome.yaml'
+DEFAULT_WORKDIR='/etc/config/adGuardConfig/workspace'
 
 exit_update() {
 	rm -f "$RUN_FILE"
@@ -130,12 +132,21 @@ prepare_links() {
 	done
 }
 
+prepare_runtime_layout() {
+	local binpath="$1" configpath workdir
+	configpath=$(get_uci configpath "$DEFAULT_CONFIGPATH")
+	workdir=$(get_uci workdir "$DEFAULT_WORKDIR")
+	mkdir -p "${binpath%/*}" "${configpath%/*}" "$workdir/data" || return 1
+	[ -d "$workdir" ] && [ -d "$workdir/data" ]
+}
+
 run_update() {
-	local force="$1" raw_binpath binpath upxflag channel arch latest_ver now_ver url archive downloadbin success basename
+	local force="$1" raw_binpath binpath upxflag channel arch latest_ver now_ver url archive downloadbin success basename enabled
 	raw_binpath=$(get_uci binpath "$DEFAULT_BINPATH")
 	binpath=$(resolve_binpath "$raw_binpath")
 	upxflag=$(get_uci upxflag '')
 	channel=$(get_uci release_channel "$(get_uci tagname release)")
+	enabled=$(get_uci enabled '0')
 	arch=$(normalize_arch "$(get_uci downloadarch "$(get_uci arch auto)")") || exit_update 1
 	mkdir -p "${binpath%/*}" "$WORK_DIR" /tmp/run || { echo 'Failed to prepare binary directory.'; exit_update 1; }
 	rm -rf "$WORK_DIR"/*
@@ -179,7 +190,11 @@ run_update() {
 	mv -f "$downloadbin" "$binpath" || { echo 'Failed to install binary.'; exit_update 1; }
 	chmod 0755 "$binpath"
 	rm -rf "$WORK_DIR"
-	/etc/init.d/AdGuardHome start >/dev/null 2>&1 || true
+	rm -f "$RUN_FILE"
+	prepare_runtime_layout "$binpath" || { echo 'Failed to prepare runtime directories.'; exit_update 1; }
+	if [ "$enabled" = '1' ]; then
+		AGH_SKIP_UPDATE=1 /etc/init.d/AdGuardHome start >/dev/null 2>&1 || { echo 'Core updated, but failed to start service.'; exit_update 1; }
+	fi
 	echo 'Succeeded in updating core.'
 	exit_update 0
 }
